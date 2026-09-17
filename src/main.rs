@@ -1,10 +1,8 @@
 mod camera;
 mod color;
-mod cylinder;
 mod framebuffer;
 mod light;
 mod ray_intersect;
-mod sphere;
 mod cube;
 mod texture;
 
@@ -15,11 +13,9 @@ use std::time::Duration;
 
 use crate::camera::Camera;
 use crate::color::Color;
-use crate::cylinder::Cylinder;
 use crate::framebuffer::Framebuffer;
 use crate::light::Light;
 use crate::ray_intersect::{Intersect, Material, RayIntersect};
-use crate::sphere::Sphere;
 use crate::cube::Cube;
 
 const WIDTH: usize = 800;
@@ -138,29 +134,54 @@ pub fn render(
     camera: &Camera,
     light: &Light,
 ) {
-    let width = framebuffer.width as f32;
-    let height = framebuffer.height as f32;
-    let aspect_ratio = width / height;
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+    let width_f = width as f32;
+    let height_f = height as f32;
+    let aspect_ratio = width_f / height_f;
 
     let perspective_scale = (FOV / 2.0).tan();
 
-    for y in 0..framebuffer.height {
-        for x in 0..framebuffer.width {
-            let screen_x = (2.0 * x as f32) / width - 1.0;
-            let screen_y = -(2.0 * y as f32) / height + 1.0;
+    let (forward, right, up) = camera.basis();
+    let eye = camera.eye;
 
-            let screen_x = screen_x * aspect_ratio * perspective_scale;
-            let screen_y = screen_y * perspective_scale;
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let rows_per_thread = height.div_ceil(num_threads).max(1);
 
-            let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
-            let ray_direction = camera.basis_change(&ray_direction);
+    std::thread::scope(|scope| {
+        for (chunk_index, chunk) in framebuffer
+            .buffer
+            .chunks_mut(rows_per_thread * width)
+            .enumerate()
+        {
+            let y_start = chunk_index * rows_per_thread;
 
-            framebuffer.set_current_color(
-                cast_ray(&camera.eye, &ray_direction, objects, light, 0).to_hex(),
-            );
-            framebuffer.point(x, y);
+            scope.spawn(move || {
+                for (row_offset, row) in chunk.chunks_mut(width).enumerate() {
+                    let y = y_start + row_offset;
+
+                    for (x, pixel) in row.iter_mut().enumerate() {
+                        let screen_x = (2.0 * x as f32) / width_f - 1.0;
+                        let screen_y = -(2.0 * y as f32) / height_f + 1.0;
+
+                        let screen_x = screen_x * aspect_ratio * perspective_scale;
+                        let screen_y = screen_y * perspective_scale;
+
+                        let local_direction =
+                            normalize(&Vec3::new(screen_x, screen_y, -1.0));
+                        let ray_direction = normalize(
+                            &(local_direction.x * right + local_direction.y * up
+                                - local_direction.z * forward),
+                        );
+
+                        *pixel = cast_ray(&eye, &ray_direction, objects, light, 0).to_hex();
+                    }
+                }
+            });
         }
-    }
+    });
 }
 
 fn main() {
@@ -170,55 +191,58 @@ fn main() {
 
     let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
 
-    let ivory = Material::new(Color::new(100, 100, 80), 50.0, [0.6, 0.3, 0.1]);
-    let rubber = Material::new(Color::new(80, 0, 0), 10.0, [0.9, 0.1, 0.0]);
-    let cobalt = Material::new(Color::new(40, 80, 140), 80.0, [0.7, 0.4, 0.15]);
-    let jade = Material::new(Color::new(60, 130, 100), 30.0, [0.8, 0.25, 0.05]);
-    let slate = Material::new(Color::new(80, 80, 92), 15.0, [0.85, 0.1, 0.2]);
-    let mirror = Material::new(Color::new(255, 255, 255), 1425.0, [0.0, 10.0, 0.85]);
+    let tierra = Material::new(Color::new(60, 140, 50), 5.0, [0.9, 0.05, 0.0]);
+    let agua = Material::new_with_transparency(
+        Color::new(35, 90, 200),
+        90.0,
+        [0.3, 0.5, 0.2],
+        0.6,
+        1.33,
+    );
+    let espejo = Material::new(Color::new(255, 255, 255), 1425.0, [0.0, 10.0, 0.85]);
+    let piedra = Material::new(Color::new(120, 120, 125), 20.0, [0.8, 0.15, 0.05]);
+    let madera = Material::new(Color::new(110, 75, 40), 8.0, [0.85, 0.05, 0.0]);
 
-    let objects: Vec<Box<dyn RayIntersect>> = vec![
-        Box::new(Cylinder::new(
-            Vec3::new(0.0, -2.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            0.25,
-            6.0,
-            slate,
-        )),
-        Box::new(Sphere {
-            center: Vec3::new(0.0, -0.75, 0.0),
-            radius: 1.0,
-            material: ivory,
-        }),
-        Box::new(Sphere {
-            center: Vec3::new(1.9, -1.25, -0.9),
-            radius: 0.5,
-            material: rubber,
-        }),
-        Box::new(Sphere {
-            center: Vec3::new(-1.5, -1.25, 1.1),
-            radius: 0.5,
-            material: cobalt,
-        }),
-        Box::new(Cylinder::new(
-            Vec3::new(-2.3, -1.75, -0.6),
-            Vec3::new(0.28, 1.0, -0.12),
-            2.0,
-            0.35,
-            jade,
-        )),
-        Box::new(Cube {
-            center: Vec3::new(2.35, -1.0, 1.45),
-            size: 0.75,
-            material: mirror,
-        }),
-    ];
+    const CUBE_SIZE: f32 = 1.0;
+    const GROUND_Y: f32 = -1.0;
+
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+
+    for x in -2..=2 {
+        for z in -2..=2 {
+            let is_water = x >= 1 && z <= -1;
+            let material = if is_water { agua.clone() } else { tierra.clone() };
+
+            objects.push(Box::new(Cube {
+                center: Vec3::new(x as f32 * CUBE_SIZE, GROUND_Y, z as f32 * CUBE_SIZE),
+                size: CUBE_SIZE,
+                material,
+            }));
+        }
+    }
+
+    objects.push(Box::new(Cube {
+        center: Vec3::new(-1.0, GROUND_Y + CUBE_SIZE, -1.0),
+        size: CUBE_SIZE,
+        material: espejo,
+    }));
+
+    objects.push(Box::new(Cube {
+        center: Vec3::new(0.0, GROUND_Y + CUBE_SIZE, 1.0),
+        size: CUBE_SIZE,
+        material: piedra,
+    }));
+    objects.push(Box::new(Cube {
+        center: Vec3::new(0.0, GROUND_Y + CUBE_SIZE * 2.0, 1.0),
+        size: CUBE_SIZE,
+        material: madera,
+    }));
 
     let light = Light::new(Vec3::new(-6.0, 6.0, 8.0), Color::new(255, 255, 255), 1.5);
 
     let mut camera = Camera::new(
-        Vec3::new(0.0, 0.4, 6.0),
-        Vec3::new(0.0, -0.7, 0.0),
+        Vec3::new(0.0, 3.0, 8.0),
+        Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     );
 

@@ -15,14 +15,20 @@ impl Camera {
     }
 
     pub fn basis_change(&self, vector: &Vec3) -> Vec3 {
-        let forward = (self.center - self.eye).normalize();
-        let right = forward.cross(&self.up).normalize();
-
-        let up = right.cross(&forward).normalize();
+        let (forward, right, up) = self.basis();
 
         let rotated = vector.x * right + vector.y * up - vector.z * forward;
 
         rotated.normalize()
+    }
+
+    /// Calcula la base ortonormal de la camara una sola vez, evita recalcular normalize/cross para cada pixel
+    pub fn basis(&self) -> (Vec3, Vec3, Vec3) {
+        let forward = (self.center - self.eye).normalize();
+        let right = forward.cross(&self.up).normalize();
+        let up = right.cross(&forward).normalize();
+
+        (forward, right, up)
     }
 
     pub fn orbit(&mut self, delta_yaw: f32, delta_pitch: f32) {

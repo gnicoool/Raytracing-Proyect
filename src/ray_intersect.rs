@@ -8,6 +8,8 @@ pub struct Material {
     pub diffuse: Color,
     pub specular: f32,
     pub albedo: [f32; 3],
+    pub transparency: f32,
+    pub refractive_index: f32,
     pub texture: Option<Arc<Texture>>,
 }
 
@@ -17,6 +19,25 @@ impl Material {
             diffuse,
             specular,
             albedo,
+            transparency: 0.0,
+            refractive_index: 1.0,
+            texture: None,
+        }
+    }
+
+    pub fn new_with_transparency(
+        diffuse: Color,
+        specular: f32,
+        albedo: [f32; 3],
+        transparency: f32,
+        refractive_index: f32,
+    ) -> Self {
+        Material {
+            diffuse,
+            specular,
+            albedo,
+            transparency,
+            refractive_index,
             texture: None,
         }
     }
@@ -26,6 +47,8 @@ impl Material {
             diffuse: Color::new(255, 255, 255),
             specular,
             albedo,
+            transparency: 0.0,
+            refractive_index: 1.0,
             texture: Some(texture),
         }
     }
@@ -76,6 +99,6 @@ impl Intersect {
     }
 }
 
-pub trait RayIntersect {
+pub trait RayIntersect: Sync {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect>;
 }
