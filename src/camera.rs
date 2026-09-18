@@ -2,6 +2,8 @@ use nalgebra_glm::Vec3;
 use std::f32::consts::PI;
 
 const PITCH_LIMIT: f32 = PI / 2.0 - 0.1;
+const MIN_ZOOM_RADIUS: f32 = 1.0;
+const MAX_ZOOM_RADIUS: f32 = 50.0;
 
 pub struct Camera {
     pub eye: Vec3,
@@ -49,5 +51,14 @@ impl Camera {
                 -radius * new_pitch.sin(),
                 radius * new_yaw.sin() * new_pitch.cos(),
             );
+    }
+
+    pub fn zoom(&mut self, delta: f32) {
+        let radius_vector = self.eye - self.center;
+        let radius = radius_vector.magnitude();
+
+        let new_radius = (radius + delta).clamp(MIN_ZOOM_RADIUS, MAX_ZOOM_RADIUS);
+
+        self.eye = self.center + radius_vector.normalize() * new_radius;
     }
 }

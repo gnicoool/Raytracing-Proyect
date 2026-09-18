@@ -25,6 +25,7 @@ const BACKGROUND_COLOR: u32 = 0x040C24;
 const FOV: f32 = PI / 3.0;
 
 const ROTATION_SPEED: f32 = PI / 60.0;
+const ZOOM_SPEED: f32 = 0.2;
 
 const SHADOW_BIAS: f32 = 1e-3;
 const REFLECTION_BIAS: f32 = 1e-3;
@@ -259,6 +260,20 @@ fn main() {
         for (key, delta_yaw, delta_pitch) in orbit {
             if window.is_key_down(key) {
                 camera.orbit(delta_yaw, delta_pitch);
+                camera_moved = true;
+            }
+        }
+
+        let zoom = [
+            (Key::W, -ZOOM_SPEED),
+            (Key::S, ZOOM_SPEED),
+            (Key::Equal, -ZOOM_SPEED),
+            (Key::Minus, ZOOM_SPEED),
+        ];
+
+        for (key, delta) in zoom {
+            if window.is_key_down(key) {
+                camera.zoom(delta);
                 camera_moved = true;
             }
         }
