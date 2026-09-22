@@ -53,6 +53,23 @@ impl Material {
         }
     }
 
+    pub fn new_with_texture_transparency(
+        specular: f32,
+        albedo: [f32; 3],
+        texture: Arc<Texture>,
+        transparency: f32,
+        refractive_index: f32,
+    ) -> Self {
+        Material {
+            diffuse: Color::new(255, 255, 255),
+            specular,
+            albedo,
+            transparency,
+            refractive_index,
+            texture: Some(texture),
+        }
+    }
+
     pub fn alpha_at(&self, u: f32, v: f32) -> u8 {
         match &self.texture {
             None => 255,

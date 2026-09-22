@@ -4,7 +4,25 @@ use nalgebra_glm::Vec3;
 pub struct Cube {
     pub center: Vec3,
     pub size: f32,
-    pub material: Material,
+    pub top: Material,
+    pub side: Material,
+    pub bottom: Material,
+}
+
+impl Cube {
+    pub fn new(center: Vec3, size: f32, material: Material) -> Self {
+        Cube {
+            center,
+            size,
+            top: material.clone(),
+            side: material.clone(),
+            bottom: material,
+        }
+    }
+
+    pub fn new_faces(center: Vec3, size: f32, top: Material, side: Material, bottom: Material) -> Self {
+        Cube { center, size, top, side, bottom }
+    }
 }
 
 impl RayIntersect for Cube {
@@ -76,11 +94,19 @@ impl RayIntersect for Cube {
                 ((local.x / self.size + 0.5), (local.y / self.size + 0.5))
             };
 
-            if self.material.alpha_at(u, v) < ALPHA_THRESHOLD {
+            let face_material = if normal.y > 0.5 {
+                &self.top
+            } else if normal.y < -0.5 {
+                &self.bottom
+            } else {
+                &self.side
+            };
+
+            if face_material.alpha_at(u, v) < ALPHA_THRESHOLD {
                 continue;
             }
 
-            let mut intersect = Intersect::new(point, normal, t, self.material.clone());
+            let mut intersect = Intersect::new(point, normal, t, face_material.clone());
             intersect.u = u;
             intersect.v = v;
 
