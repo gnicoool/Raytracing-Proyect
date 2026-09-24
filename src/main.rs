@@ -331,46 +331,67 @@ fn main() {
 
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
 
-    for x in -4..=4 {
-        for z in -4..=4 {
+
+    const GRID_MIN: i32 = -4;
+    const GRID_MAX: i32 = 4;
+    const GRID_CELLS: f32 = (GRID_MAX - GRID_MIN + 1) as f32;
+
+    objects.push(Box::new(Cube::new_box(
+        Vec3::new(0.0, STONE_Y, 0.0),
+        Vec3::new(GRID_CELLS * CUBE_SIZE, CUBE_SIZE, GRID_CELLS * CUBE_SIZE),
+        CUBE_SIZE,
+        stone.clone(),
+    )));
+
+  
+    const ICE_X_MIN: i32 = 2;
+    const ICE_X_MAX: i32 = 3;
+    const ICE_Z_MIN: i32 = 2;
+    const ICE_Z_MAX: i32 = 3;
+
+    let add_grass_strip = |objects: &mut Vec<Box<dyn RayIntersect>>, x_min: i32, x_max: i32, z_min: i32, z_max: i32| {
+        let size_x = (x_max - x_min + 1) as f32 * CUBE_SIZE;
+        let size_z = (z_max - z_min + 1) as f32 * CUBE_SIZE;
+        let center = Vec3::new(
+            (x_min + x_max) as f32 * 0.5 * CUBE_SIZE,
+            GROUND_Y,
+            (z_min + z_max) as f32 * 0.5 * CUBE_SIZE,
+        );
+
+        let mut strip = Cube::new_box(center, Vec3::new(size_x, CUBE_SIZE, size_z), CUBE_SIZE, grass_side.clone());
+        strip.top = grass_top.clone();
+        strip.bottom = dirt.clone();
+        objects.push(Box::new(strip));
+    };
+
+    add_grass_strip(&mut objects, GRID_MIN, GRID_MAX, GRID_MIN, ICE_Z_MIN - 1);
+    add_grass_strip(&mut objects, GRID_MIN, GRID_MAX, ICE_Z_MAX + 1, GRID_MAX);
+    add_grass_strip(&mut objects, GRID_MIN, ICE_X_MIN - 1, ICE_Z_MIN, ICE_Z_MAX);
+    add_grass_strip(&mut objects, ICE_X_MAX + 1, GRID_MAX, ICE_Z_MIN, ICE_Z_MAX);
+
+    for x in ICE_X_MIN..=ICE_X_MAX {
+        for z in ICE_Z_MIN..=ICE_Z_MAX {
             objects.push(Box::new(Cube::new(
-                Vec3::new(x as f32 * CUBE_SIZE, STONE_Y, z as f32 * CUBE_SIZE),
+                Vec3::new(x as f32 * CUBE_SIZE, GROUND_Y, z as f32 * CUBE_SIZE),
                 CUBE_SIZE,
-                stone.clone(),
+                ice.clone(),
             )));
-
-            let is_ice = (2..=3).contains(&x) && (2..=3).contains(&z);
-
-            if is_ice {
-                objects.push(Box::new(Cube::new(
-                    Vec3::new(x as f32 * CUBE_SIZE, GROUND_Y, z as f32 * CUBE_SIZE),
-                    CUBE_SIZE,
-                    ice.clone(),
-                )));
-            } else {
-                objects.push(Box::new(Cube::new_faces(
-                    Vec3::new(x as f32 * CUBE_SIZE, GROUND_Y, z as f32 * CUBE_SIZE),
-                    CUBE_SIZE,
-                    grass_top.clone(),
-                    grass_side.clone(),
-                    dirt.clone(),
-                )));
-            }
         }
     }
 
     let tree_x = -3.0;
     let tree_z = -3.0;
+    const TRUNK_HEIGHT: f32 = 3.0;
 
-    for i in 0..3 {
-        objects.push(Box::new(Cube::new_faces(
-            Vec3::new(tree_x, GROUND_Y + CUBE_SIZE * (i as f32 + 1.0), tree_z),
-            CUBE_SIZE,
-            log_top.clone(),
-            log_side.clone(),
-            log_top.clone(),
-        )));
-    }
+    let mut trunk = Cube::new_box(
+        Vec3::new(tree_x, GROUND_Y + CUBE_SIZE * TRUNK_HEIGHT / 2.0 + CUBE_SIZE / 2.0, tree_z),
+        Vec3::new(CUBE_SIZE, CUBE_SIZE * TRUNK_HEIGHT, CUBE_SIZE),
+        CUBE_SIZE,
+        log_side.clone(),
+    );
+    trunk.top = log_top.clone();
+    trunk.bottom = log_top;
+    objects.push(Box::new(trunk));
 
     let leaves_base_y = GROUND_Y + CUBE_SIZE * 4.0;
 
@@ -390,13 +411,9 @@ fn main() {
         }
     }
 
-    objects.push(Box::new(Cube::new(
-        Vec3::new(2.0, GROUND_Y + CUBE_SIZE, -3.0),
-        CUBE_SIZE,
-        iron.clone(),
-    )));
-    objects.push(Box::new(Cube::new(
-        Vec3::new(2.0, GROUND_Y + CUBE_SIZE * 2.0, -3.0),
+    objects.push(Box::new(Cube::new_box(
+        Vec3::new(2.0, GROUND_Y + CUBE_SIZE * 1.5, -3.0),
+        Vec3::new(CUBE_SIZE, CUBE_SIZE * 2.0, CUBE_SIZE),
         CUBE_SIZE,
         iron.clone(),
     )));

@@ -3,7 +3,10 @@ use nalgebra_glm::Vec3;
 
 pub struct Cube {
     pub center: Vec3,
-    pub size: f32,
+    /// Dimensiones (ancho, alto, profundo). Para un bloque grande que fusiona
+    /// varios cubos de 1x1x1, se usa el tamaño total y la textura se repite
+    pub size: Vec3,
+    pub tile_size: f32,
     pub top: Material,
     pub side: Material,
     pub bottom: Material,
@@ -13,23 +16,33 @@ impl Cube {
     pub fn new(center: Vec3, size: f32, material: Material) -> Self {
         Cube {
             center,
-            size,
+            size: Vec3::new(size, size, size),
+            tile_size: size,
             top: material.clone(),
             side: material.clone(),
             bottom: material,
         }
     }
 
-    pub fn new_faces(center: Vec3, size: f32, top: Material, side: Material, bottom: Material) -> Self {
-        Cube { center, size, top, side, bottom }
+    /// Crea una caja que fusiona varios cubos del mismo material en un solo
+    /// objeto, repitiendo la textura cada por unidades de mundo
+    pub fn new_box(center: Vec3, size: Vec3, tile_size: f32, material: Material) -> Self {
+        Cube {
+            center,
+            size,
+            tile_size,
+            top: material.clone(),
+            side: material.clone(),
+            bottom: material,
+        }
     }
 }
 
 impl RayIntersect for Cube {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect> {
-        let half = self.size / 2.0;
-        let min = self.center - Vec3::new(half, half, half);
-        let max = self.center + Vec3::new(half, half, half);
+        let half = self.size * 0.5;
+        let min = self.center - half;
+        let max = self.center + half;
 
         let mut t_min = f32::NEG_INFINITY;
         let mut t_max = f32::INFINITY;
@@ -85,13 +98,13 @@ impl RayIntersect for Cube {
 
             let point = ray_origin + ray_direction * t;
 
-            let local = point - self.center;
+            let local = point - self.center + half;
             let (u, v) = if normal.x.abs() > 0.5 {
-                ((local.z / self.size + 0.5), (local.y / self.size + 0.5))
+                (local.z / self.tile_size, local.y / self.tile_size)
             } else if normal.y.abs() > 0.5 {
-                ((local.x / self.size + 0.5), (local.z / self.size + 0.5))
+                (local.x / self.tile_size, local.z / self.tile_size)
             } else {
-                ((local.x / self.size + 0.5), (local.y / self.size + 0.5))
+                (local.x / self.tile_size, local.y / self.tile_size)
             };
 
             let face_material = if normal.y > 0.5 {
