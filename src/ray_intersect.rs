@@ -118,4 +118,8 @@ impl Intersect {
 
 pub trait RayIntersect: Sync {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Option<Intersect>;
+
+    fn contains_point(&self, _point: &Vec3) -> bool {
+        false
+    }
 }

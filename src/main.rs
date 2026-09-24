@@ -433,6 +433,24 @@ fn main() {
 
     let mut needs_sharp_render = true;
 
+    //evita que quede pegada a la superficie de un bloque
+    const CAMERA_COLLISION_RADIUS: f32 = 0.2;
+
+    let camera_collides = |eye: &Vec3, objects: &[Box<dyn RayIntersect>]| {
+        const OFFSETS: [Vec3; 6] = [
+            Vec3::new(CAMERA_COLLISION_RADIUS, 0.0, 0.0),
+            Vec3::new(-CAMERA_COLLISION_RADIUS, 0.0, 0.0),
+            Vec3::new(0.0, CAMERA_COLLISION_RADIUS, 0.0),
+            Vec3::new(0.0, -CAMERA_COLLISION_RADIUS, 0.0),
+            Vec3::new(0.0, 0.0, CAMERA_COLLISION_RADIUS),
+            Vec3::new(0.0, 0.0, -CAMERA_COLLISION_RADIUS),
+        ];
+
+        OFFSETS
+            .iter()
+            .any(|offset| objects.iter().any(|object| object.contains_point(&(eye + offset))))
+    };
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
         let orbit = [
             (Key::Left, ROTATION_SPEED, 0.0),
@@ -445,8 +463,14 @@ fn main() {
 
         for (key, delta_yaw, delta_pitch) in orbit {
             if window.is_key_down(key) {
+                let previous_eye = camera.eye;
                 camera.orbit(delta_yaw, delta_pitch);
-                camera_moving = true;
+
+                if camera_collides(&camera.eye, &objects) {
+                    camera.eye = previous_eye;
+                } else {
+                    camera_moving = true;
+                }
             }
         }
 
@@ -459,8 +483,14 @@ fn main() {
 
         for (key, delta) in zoom {
             if window.is_key_down(key) {
+                let previous_eye = camera.eye;
                 camera.zoom(delta);
-                camera_moving = true;
+
+                if camera_collides(&camera.eye, &objects) {
+                    camera.eye = previous_eye;
+                } else {
+                    camera_moving = true;
+                }
             }
         }
 

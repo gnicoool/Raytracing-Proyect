@@ -128,4 +128,11 @@ impl RayIntersect for Cube {
 
         None
     }
+
+    fn contains_point(&self, point: &Vec3) -> bool {
+        let half = self.size * 0.5;
+        let diff = point - self.center;
+
+        diff.x.abs() <= half.x && diff.y.abs() <= half.y && diff.z.abs() <= half.z
+    }
 }
