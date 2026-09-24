@@ -331,9 +331,9 @@ fn main() {
 
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
 
-
-    const GRID_MIN: i32 = -4;
-    const GRID_MAX: i32 = 4;
+    // Grid (16x16) y capa de piedra base
+    const GRID_MIN: i32 = -8;
+    const GRID_MAX: i32 = 7;
     const GRID_CELLS: f32 = (GRID_MAX - GRID_MIN + 1) as f32;
 
     objects.push(Box::new(Cube::new_box(
@@ -343,10 +343,10 @@ fn main() {
         stone.clone(),
     )));
 
-  
-    const ICE_X_MIN: i32 = 2;
+    //Lago de hielo central (8x8)
+    const ICE_X_MIN: i32 = -4;
     const ICE_X_MAX: i32 = 3;
-    const ICE_Z_MIN: i32 = 2;
+    const ICE_Z_MIN: i32 = -4;
     const ICE_Z_MAX: i32 = 3;
 
     let add_grass_strip = |objects: &mut Vec<Box<dyn RayIntersect>>, x_min: i32, x_max: i32, z_min: i32, z_max: i32| {
@@ -379,50 +379,104 @@ fn main() {
         }
     }
 
-    let tree_x = -3.0;
-    let tree_z = -3.0;
-    const TRUNK_HEIGHT: f32 = 3.0;
+    // Santuario de hierro (centro exacto del lago)
+    const SANCTUARY_X: f32 = (ICE_X_MIN + ICE_X_MAX) as f32 * 0.5;
+    const SANCTUARY_Z: f32 = (ICE_Z_MIN + ICE_Z_MAX) as f32 * 0.5;
+    const PILLAR_HEIGHT: f32 = 3.0;
 
-    let mut trunk = Cube::new_box(
-        Vec3::new(tree_x, GROUND_Y + CUBE_SIZE * TRUNK_HEIGHT / 2.0 + CUBE_SIZE / 2.0, tree_z),
-        Vec3::new(CUBE_SIZE, CUBE_SIZE * TRUNK_HEIGHT, CUBE_SIZE),
-        CUBE_SIZE,
-        log_side.clone(),
-    );
-    trunk.top = log_top.clone();
-    trunk.bottom = log_top;
-    objects.push(Box::new(trunk));
+    let add_iron_pillar = |objects: &mut Vec<Box<dyn RayIntersect>>, x: f32, z: f32| {
+        objects.push(Box::new(Cube::new_box(
+            Vec3::new(x, GROUND_Y + CUBE_SIZE * PILLAR_HEIGHT / 2.0 + CUBE_SIZE / 2.0, z),
+            Vec3::new(CUBE_SIZE, CUBE_SIZE * PILLAR_HEIGHT, CUBE_SIZE),
+            CUBE_SIZE,
+            iron.clone(),
+        )));
+    };
 
-    let leaves_base_y = GROUND_Y + CUBE_SIZE * 4.0;
-
-    for dx in -1..=1 {
-        for dz in -1..=1 {
-            for dy in 0..=1 {
-                if dx == 0 && dz == 0 && dy == 0 {
-                    continue;
-                }
-
-                objects.push(Box::new(Cube::new(
-                    Vec3::new(tree_x + dx as f32, leaves_base_y + dy as f32, tree_z + dz as f32),
-                    CUBE_SIZE,
-                    leaves.clone(),
-                )));
-            }
+    for &px in &[SANCTUARY_X - 1.5, SANCTUARY_X + 1.5] {
+        for &pz in &[SANCTUARY_Z - 1.5, SANCTUARY_Z + 1.5] {
+            add_iron_pillar(&mut objects, px, pz);
         }
     }
 
+    const ROOF_THICKNESS: f32 = 0.4;
     objects.push(Box::new(Cube::new_box(
-        Vec3::new(2.0, GROUND_Y + CUBE_SIZE * 1.5, -3.0),
-        Vec3::new(CUBE_SIZE, CUBE_SIZE * 2.0, CUBE_SIZE),
+        Vec3::new(SANCTUARY_X, GROUND_Y + CUBE_SIZE * PILLAR_HEIGHT + ROOF_THICKNESS / 2.0, SANCTUARY_Z),
+        Vec3::new(4.0, ROOF_THICKNESS, 4.0),
         CUBE_SIZE,
         iron.clone(),
     )));
 
-    let light = Light::new(Vec3::new(-6.0, 6.0, 8.0), Color::new(255, 255, 255), 1.5);
+    // Puente de madera (tablas finas 1x0.2x1, no cubos) 
+    const PLANK_HEIGHT: f32 = 0.2;
+    const PLANK_Y: f32 = GROUND_Y + CUBE_SIZE / 2.0 + PLANK_HEIGHT / 2.0;
+
+    for z in -1..=(ICE_Z_MAX + 1) {
+        let mut plank = Cube::new_box(
+            Vec3::new(0.0, PLANK_Y, z as f32 * CUBE_SIZE),
+            Vec3::new(CUBE_SIZE, PLANK_HEIGHT, CUBE_SIZE),
+            CUBE_SIZE,
+            log_side.clone(),
+        );
+        plank.top = log_top.clone();
+        objects.push(Box::new(plank));
+    }
+
+    // Acantilado escalonado al fondo
+    let add_cliff_row = |objects: &mut Vec<Box<dyn RayIntersect>>, z: i32, height_blocks: f32| {
+        objects.push(Box::new(Cube::new_box(
+            Vec3::new(0.0, GROUND_Y + CUBE_SIZE / 2.0 + CUBE_SIZE * height_blocks / 2.0, z as f32 * CUBE_SIZE),
+            Vec3::new(GRID_CELLS * CUBE_SIZE, CUBE_SIZE * height_blocks, CUBE_SIZE),
+            CUBE_SIZE,
+            stone.clone(),
+        )));
+    };
+
+    add_cliff_row(&mut objects, GRID_MAX + 1, 2.0);
+    add_cliff_row(&mut objects, GRID_MAX + 2, 3.0);
+
+    let add_tree = |objects: &mut Vec<Box<dyn RayIntersect>>, tree_x: f32, tree_z: f32| {
+        const TRUNK_HEIGHT: f32 = 3.0;
+
+        let mut trunk = Cube::new_box(
+            Vec3::new(tree_x, GROUND_Y + CUBE_SIZE * TRUNK_HEIGHT / 2.0 + CUBE_SIZE / 2.0, tree_z),
+            Vec3::new(CUBE_SIZE, CUBE_SIZE * TRUNK_HEIGHT, CUBE_SIZE),
+            CUBE_SIZE,
+            log_side.clone(),
+        );
+        trunk.top = log_top.clone();
+        trunk.bottom = log_top.clone();
+        objects.push(Box::new(trunk));
+
+        let leaves_base_y = GROUND_Y + CUBE_SIZE * 4.0;
+
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                for dy in 0..=1 {
+                    if dx == 0 && dz == 0 && dy == 0 {
+                        continue;
+                    }
+
+                    objects.push(Box::new(Cube::new(
+                        Vec3::new(tree_x + dx as f32, leaves_base_y + dy as f32, tree_z + dz as f32),
+                        CUBE_SIZE,
+                        leaves.clone(),
+                    )));
+                }
+            }
+        }
+    };
+
+    add_tree(&mut objects, (GRID_MIN + 1) as f32, (GRID_MIN + 1) as f32);
+    add_tree(&mut objects, (GRID_MAX - 1) as f32, (GRID_MIN + 1) as f32);
+    add_tree(&mut objects, (GRID_MIN + 1) as f32, 5.0);
+    add_tree(&mut objects, (GRID_MAX - 1) as f32, 5.0);
+
+    let light = Light::new(Vec3::new(-10.0, 16.0, 16.0), Color::new(255, 255, 255), 1.5);
 
     let mut camera = Camera::new(
-        Vec3::new(0.0, 3.0, 8.0),
-        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 10.0, 20.0),
+        Vec3::new(0.0, 0.0, -0.5),
         Vec3::new(0.0, 1.0, 0.0),
     );
 
