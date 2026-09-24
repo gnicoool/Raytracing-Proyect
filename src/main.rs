@@ -327,113 +327,143 @@ fn main() {
 
     const CUBE_SIZE: f32 = 1.0;
     const GROUND_Y: f32 = -1.0;
-    const STONE_Y: f32 = GROUND_Y - CUBE_SIZE;
 
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
 
-    // Grid (16x16) y capa de piedra base
-    const GRID_MIN: i32 = -8;
-    const GRID_MAX: i32 = 7;
-    const GRID_CELLS: f32 = (GRID_MAX - GRID_MIN + 1) as f32;
+    // G = pasto, T = tierra expuesta, S = piedra/acantilado a nivel de arriba,
+    // B = hielo del lago, W = piso del santuario bajo los pilares a nivel de abajo
+    const GRID_SIZE: usize = 18;
+    const GRID_MIN: i32 = -9;
+    const TERRAIN: [&str; GRID_SIZE] = [
+        "GGGGGSSBBBBBBSSSSS",
+        "GGGGTTBBBBBBBSSSGG",
+        "GGGGTBBBBBBBBBBBGG",
+        "GGGGTBBBBBBBBBBBTG",
+        "GGGGTBBBBBBBBBBBGG",
+        "GGGTBBBBBBBBBBBBGG",
+        "GGTBBBBBBBBBBBBBBG",
+        "STBBBBBBBBBBBBBBBB",
+        "SBBBBBWWWBBBBBBBBS",
+        "BBBBBBWWWBBBBBBBSS",
+        "BBBBBBWWWBBBBBBBTG",
+        "BBBBBBBBBBBBBBBGGG",
+        "SBBBGBBBBBBBBBTGGG",
+        "TTTGGBBBBBBBBTGGGG",
+        "TGGGGBBBBBBBTTGGGG",
+        "TGGGTBBBBBBTGGGGGG",
+        "GGGGTBBBBBTTTGGGGG",
+        "GGGTTSSSSSSTTGGGGG",
+    ];
+
+    let lower_exception = |row: i32, col: i32| matches!((row, col), (6, 17) | (12, 4) | (13, 4));
+    const DOCK_ROW_START: i32 = 11;
+    const DOCK_ROW_END: i32 = 17;
+    let is_dock = |row: i32, col: i32| col == 7 && (DOCK_ROW_START..=DOCK_ROW_END).contains(&row);
 
     objects.push(Box::new(Cube::new_box(
-        Vec3::new(0.0, STONE_Y, 0.0),
-        Vec3::new(GRID_CELLS * CUBE_SIZE, CUBE_SIZE, GRID_CELLS * CUBE_SIZE),
+        Vec3::new(-0.5, GROUND_Y - 2.0, -0.5),
+        Vec3::new(GRID_SIZE as f32 * CUBE_SIZE, CUBE_SIZE, GRID_SIZE as f32 * CUBE_SIZE),
         CUBE_SIZE,
         stone.clone(),
     )));
 
-    //Lago de hielo central (8x8)
-    const ICE_X_MIN: i32 = -4;
-    const ICE_X_MAX: i32 = 3;
-    const ICE_Z_MIN: i32 = -4;
-    const ICE_Z_MAX: i32 = 3;
+    for row in 0..GRID_SIZE as i32 {
+        let chars: Vec<char> = TERRAIN[row as usize].chars().collect();
+        let z = (row + GRID_MIN) as f32 * CUBE_SIZE;
 
-    let add_grass_strip = |objects: &mut Vec<Box<dyn RayIntersect>>, x_min: i32, x_max: i32, z_min: i32, z_max: i32| {
-        let size_x = (x_max - x_min + 1) as f32 * CUBE_SIZE;
-        let size_z = (z_max - z_min + 1) as f32 * CUBE_SIZE;
-        let center = Vec3::new(
-            (x_min + x_max) as f32 * 0.5 * CUBE_SIZE,
-            GROUND_Y,
-            (z_min + z_max) as f32 * 0.5 * CUBE_SIZE,
-        );
+        let mut col = 0i32;
+        while col < GRID_SIZE as i32 {
+            if is_dock(row, col) {
+                let x = (col + GRID_MIN) as f32 * CUBE_SIZE;
+                // Rampa suave: en la fila 11 el muelle queda a la altura del piso del
+                // santuario (-1.5) y en la fila 17 a la altura de la orilla (-0.5).
+                let t = (row - DOCK_ROW_START) as f32 / (DOCK_ROW_END - DOCK_ROW_START) as f32;
+                let plank_top = -1.5 + t * 1.0;
+                let mut plank = Cube::new_box(
+                    Vec3::new(x, plank_top - 0.1, z),
+                    Vec3::new(CUBE_SIZE, 0.2, CUBE_SIZE),
+                    CUBE_SIZE,
+                    log_side.clone(),
+                );
+                plank.top = log_top.clone();
+                objects.push(Box::new(plank));
+                col += 1;
+                continue;
+            }
 
-        let mut strip = Cube::new_box(center, Vec3::new(size_x, CUBE_SIZE, size_z), CUBE_SIZE, grass_side.clone());
-        strip.top = grass_top.clone();
-        strip.bottom = dirt.clone();
-        objects.push(Box::new(strip));
-    };
+            let ch = chars[col as usize];
+            let lower = matches!(ch, 'B' | 'W') || lower_exception(row, col);
 
-    add_grass_strip(&mut objects, GRID_MIN, GRID_MAX, GRID_MIN, ICE_Z_MIN - 1);
-    add_grass_strip(&mut objects, GRID_MIN, GRID_MAX, ICE_Z_MAX + 1, GRID_MAX);
-    add_grass_strip(&mut objects, GRID_MIN, ICE_X_MIN - 1, ICE_Z_MIN, ICE_Z_MAX);
-    add_grass_strip(&mut objects, ICE_X_MAX + 1, GRID_MAX, ICE_Z_MIN, ICE_Z_MAX);
+            // Fusiona en una sola caja las celdas consecutivas del mismo tipo/nivel.
+            let mut end = col + 1;
+            while end < GRID_SIZE as i32 && !is_dock(row, end) {
+                let e_ch = chars[end as usize];
+                let e_lower = matches!(e_ch, 'B' | 'W') || lower_exception(row, end);
+                if e_lower != lower || (!lower && e_ch != ch) {
+                    break;
+                }
+                end += 1;
+            }
 
-    for x in ICE_X_MIN..=ICE_X_MAX {
-        for z in ICE_Z_MIN..=ICE_Z_MAX {
-            objects.push(Box::new(Cube::new(
-                Vec3::new(x as f32 * CUBE_SIZE, GROUND_Y, z as f32 * CUBE_SIZE),
-                CUBE_SIZE,
-                ice.clone(),
-            )));
+            let run_len = (end - col) as f32;
+            let x_center = (col + GRID_MIN) as f32 * CUBE_SIZE + (run_len - 1.0) * CUBE_SIZE / 2.0;
+
+            if lower {
+                objects.push(Box::new(Cube::new_box(
+                    Vec3::new(x_center, GROUND_Y - 1.0, z),
+                    Vec3::new(run_len * CUBE_SIZE, CUBE_SIZE, CUBE_SIZE),
+                    CUBE_SIZE,
+                    ice.clone(),
+                )));
+            } else {
+                let size = Vec3::new(run_len * CUBE_SIZE, 2.0 * CUBE_SIZE, CUBE_SIZE);
+                let center = Vec3::new(x_center, GROUND_Y - 0.5, z);
+
+                let block: Cube = match ch {
+                    'G' => {
+                        let mut b = Cube::new_box(center, size, CUBE_SIZE, grass_side.clone());
+                        b.top = grass_top.clone();
+                        b.bottom = dirt.clone();
+                        b
+                    }
+                    'T' => Cube::new_box(center, size, CUBE_SIZE, dirt.clone()),
+                    _ => Cube::new_box(center, size, CUBE_SIZE, stone.clone()),
+                };
+                objects.push(Box::new(block));
+            }
+
+            col = end;
         }
     }
 
-    // Santuario de hierro (centro exacto del lago)
-    const SANCTUARY_X: f32 = (ICE_X_MIN + ICE_X_MAX) as f32 * 0.5;
-    const SANCTUARY_Z: f32 = (ICE_Z_MIN + ICE_Z_MAX) as f32 * 0.5;
     const PILLAR_HEIGHT: f32 = 3.0;
+    let pillar_base_y = GROUND_Y - 1.5;
 
     let add_iron_pillar = |objects: &mut Vec<Box<dyn RayIntersect>>, x: f32, z: f32| {
         objects.push(Box::new(Cube::new_box(
-            Vec3::new(x, GROUND_Y + CUBE_SIZE * PILLAR_HEIGHT / 2.0 + CUBE_SIZE / 2.0, z),
+            Vec3::new(x, pillar_base_y + CUBE_SIZE * PILLAR_HEIGHT / 2.0, z),
             Vec3::new(CUBE_SIZE, CUBE_SIZE * PILLAR_HEIGHT, CUBE_SIZE),
             CUBE_SIZE,
             iron.clone(),
         )));
     };
 
-    for &px in &[SANCTUARY_X - 1.5, SANCTUARY_X + 1.5] {
-        for &pz in &[SANCTUARY_Z - 1.5, SANCTUARY_Z + 1.5] {
+    let sanctuary_x = (6 + GRID_MIN) as f32 + 1.0;
+    let sanctuary_z = (8 + GRID_MIN) as f32 + 1.0;
+
+    for &px in &[sanctuary_x - 1.0, sanctuary_x + 1.0] {
+        for &pz in &[sanctuary_z - 1.0, sanctuary_z + 1.0] {
             add_iron_pillar(&mut objects, px, pz);
         }
     }
 
     const ROOF_THICKNESS: f32 = 0.4;
     objects.push(Box::new(Cube::new_box(
-        Vec3::new(SANCTUARY_X, GROUND_Y + CUBE_SIZE * PILLAR_HEIGHT + ROOF_THICKNESS / 2.0, SANCTUARY_Z),
-        Vec3::new(4.0, ROOF_THICKNESS, 4.0),
+        Vec3::new(sanctuary_x, pillar_base_y + CUBE_SIZE * PILLAR_HEIGHT + ROOF_THICKNESS / 2.0, sanctuary_z),
+        Vec3::new(3.0, ROOF_THICKNESS, 3.0),
         CUBE_SIZE,
         iron.clone(),
     )));
-
-    // Puente de madera (tablas finas 1x0.2x1, no cubos) 
-    const PLANK_HEIGHT: f32 = 0.2;
-    const PLANK_Y: f32 = GROUND_Y + CUBE_SIZE / 2.0 + PLANK_HEIGHT / 2.0;
-
-    for z in -1..=(ICE_Z_MAX + 1) {
-        let mut plank = Cube::new_box(
-            Vec3::new(0.0, PLANK_Y, z as f32 * CUBE_SIZE),
-            Vec3::new(CUBE_SIZE, PLANK_HEIGHT, CUBE_SIZE),
-            CUBE_SIZE,
-            log_side.clone(),
-        );
-        plank.top = log_top.clone();
-        objects.push(Box::new(plank));
-    }
-
-    // Acantilado escalonado al fondo
-    let add_cliff_row = |objects: &mut Vec<Box<dyn RayIntersect>>, z: i32, height_blocks: f32| {
-        objects.push(Box::new(Cube::new_box(
-            Vec3::new(0.0, GROUND_Y + CUBE_SIZE / 2.0 + CUBE_SIZE * height_blocks / 2.0, z as f32 * CUBE_SIZE),
-            Vec3::new(GRID_CELLS * CUBE_SIZE, CUBE_SIZE * height_blocks, CUBE_SIZE),
-            CUBE_SIZE,
-            stone.clone(),
-        )));
-    };
-
-    add_cliff_row(&mut objects, GRID_MAX + 1, 2.0);
-    add_cliff_row(&mut objects, GRID_MAX + 2, 3.0);
 
     let add_tree = |objects: &mut Vec<Box<dyn RayIntersect>>, tree_x: f32, tree_z: f32| {
         const TRUNK_HEIGHT: f32 = 3.0;
@@ -467,16 +497,17 @@ fn main() {
         }
     };
 
+    let grid_max = GRID_MIN + GRID_SIZE as i32 - 1;
     add_tree(&mut objects, (GRID_MIN + 1) as f32, (GRID_MIN + 1) as f32);
-    add_tree(&mut objects, (GRID_MAX - 1) as f32, (GRID_MIN + 1) as f32);
-    add_tree(&mut objects, (GRID_MIN + 1) as f32, 5.0);
-    add_tree(&mut objects, (GRID_MAX - 1) as f32, 5.0);
+    add_tree(&mut objects, (grid_max - 1) as f32, (GRID_MIN + 1) as f32);
+    add_tree(&mut objects, (GRID_MIN + 1) as f32, (grid_max - 1) as f32);
+    add_tree(&mut objects, (grid_max - 1) as f32, (grid_max - 1) as f32);
 
     let light = Light::new(Vec3::new(-10.0, 16.0, 16.0), Color::new(255, 255, 255), 1.5);
 
     let mut camera = Camera::new(
-        Vec3::new(0.0, 10.0, 20.0),
-        Vec3::new(0.0, 0.0, -0.5),
+        Vec3::new(0.0, 12.0, 23.0),
+        Vec3::new(sanctuary_x, 0.0, sanctuary_z),
         Vec3::new(0.0, 1.0, 0.0),
     );
 
