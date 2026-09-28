@@ -87,7 +87,8 @@ impl Material {
             Some(texture) => {
                 let x = ((u.rem_euclid(1.0)) * texture.width as f32) as usize;
                 let y = ((1.0 - v.rem_euclid(1.0)) * texture.height as f32) as usize;
-                Color::from_hex(texture.get_pixel(x, y))
+                // self.diffuse actúa como tinte sobre la textura (blanco = sin tinte).
+                Color::from_hex(texture.get_pixel(x, y)) * self.diffuse
             }
         }
     }

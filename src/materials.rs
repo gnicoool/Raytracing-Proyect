@@ -1,3 +1,4 @@
+use crate::color::Color;
 use crate::ray_intersect::Material;
 use crate::texture::Texture;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ pub struct Materials {
     pub log_top: Material,
     pub log_side: Material,
     pub leaves: Material,
+    pub water: Material,
     pub ice: Material,
     pub iron: Material,
     pub iron_mirror: Material,
@@ -53,11 +55,26 @@ impl Materials {
                 [0.9, 0.05, 0.0],
                 Arc::new(Texture::from_file("assets/textures/oak_leaves.png")),
             ),
+            // reflectivity (albedo[2]) + transparency deben sumar bastante menos de 1.0,
+            // si no, el color/textura difusa se cancela casi por completo en cast_ray
+            // (result = color * (1 - reflectivity - transparency) + ...) y se ve negro.
+            water: {
+                let mut m = Material::new_with_texture_transparency(
+                    80.0,
+                    [0.65, 0.25, 0.15],
+                    Arc::new(Texture::from_file("assets/textures/water.png")),
+                    0.5,
+                    1.33,
+                );
+                // Tinte celeste más saturado sobre la textura de agua.
+                m.diffuse = Color::new(120, 200, 255);
+                m
+            },
             ice: Material::new_with_texture_transparency(
-                120.0,
-                [0.05, 0.3, 0.2],
+                110.0,
+                [0.75, 0.2, 0.15],
                 Arc::new(Texture::from_file("assets/textures/ice.png")),
-                0.8,
+                0.25,
                 1.31,
             ),
             iron: {
