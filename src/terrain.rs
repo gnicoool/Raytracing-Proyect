@@ -100,7 +100,7 @@ pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, gr
                     Vec3::new(x_center, ground_y - 1.0, z),
                     Vec3::new(run_len * cube_size, cube_size, cube_size),
                     cube_size,
-                    materials.ice.clone(),
+                    materials.lake.clone(),
                 )));
             } else {
                 let size = Vec3::new(run_len * cube_size, 2.0 * cube_size, cube_size);

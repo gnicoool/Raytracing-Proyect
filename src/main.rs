@@ -9,17 +9,18 @@ mod materials;
 mod terrain;
 mod sanctuary;
 mod vegetation;
+mod snow;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::camera::Camera;
 use crate::color::Color;
 use crate::framebuffer::Framebuffer;
 use crate::light::Light;
-use crate::materials::Materials;
+use crate::materials::{Materials, Season};
 use crate::ray_intersect::{Intersect, RayIntersect};
 use crate::texture::Texture;
 
@@ -271,18 +272,11 @@ pub fn render(
     });
 }
 
-fn main() {
-    let frame_delay = Duration::from_millis(16);
+const CUBE_SIZE: f32 = 1.0;
+const GROUND_Y: f32 = -1.0;
 
-    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
-
-    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
-
-    let materials = Materials::load();
-    let skybox = Texture::from_file("assets/textures/sky.png");
-
-    const CUBE_SIZE: f32 = 1.0;
-    const GROUND_Y: f32 = -1.0;
+fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
+    let materials = Materials::load(season);
 
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
 
@@ -360,8 +354,38 @@ fn main() {
         );
     }
 
+    (materials, objects)
+}
+
+fn season_name(season: Season) -> &'static str {
+    match season {
+        Season::Spring => "Primavera",
+        Season::Summer => "Verano",
+        Season::Autumn => "Otoño",
+        Season::Winter => "Invierno",
+    }
+}
+
+fn main() {
+    let frame_delay = Duration::from_millis(16);
+
+    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
+    let mut display_buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+
+    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+
+    let skybox = Texture::from_file("assets/textures/sky.png");
+
+    let mut season = Season::Summer;
+    let (_materials, mut objects) = build_scene(season);
+    window.set_title(&format!("Lakitu - {}", season_name(season)));
+
+    let mut snowflakes = snow::new_flakes(200, WIDTH, HEIGHT);
+    let mut last_frame = Instant::now();
+
     let light = Light::new(Vec3::new(-10.0, 16.0, 16.0), Color::new(255, 255, 255), 1.5);
 
+    let (sanctuary_x, sanctuary_z) = terrain::sanctuary_center();
     let mut camera = Camera::new(
         Vec3::new(0.0, 12.0, 23.0),
         Vec3::new(sanctuary_x, 0.0, sanctuary_z),
@@ -394,6 +418,24 @@ fn main() {
     };
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        let season_keys = [
+            (Key::Key1, Season::Spring),
+            (Key::Key2, Season::Summer),
+            (Key::Key3, Season::Autumn),
+            (Key::Key4, Season::Winter),
+        ];
+
+        for (key, new_season) in season_keys {
+            if window.is_key_pressed(key, minifb::KeyRepeat::No) && new_season != season {
+                season = new_season;
+                let (new_materials, new_objects) = build_scene(season);
+                objects = new_objects;
+                drop(new_materials);
+                window.set_title(&format!("Lakitu - {}", season_name(season)));
+                needs_sharp_render = true;
+            }
+        }
+
         let orbit = [
             (Key::Left, ROTATION_SPEED, 0.0),
             (Key::Right, -ROTATION_SPEED, 0.0),
@@ -444,9 +486,23 @@ fn main() {
             needs_sharp_render = false;
         }
 
-        window
-            .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
-            .unwrap();
+        let now = Instant::now();
+        let dt = (now - last_frame).as_secs_f32();
+        last_frame = now;
+
+        if season == Season::Winter {
+            display_buffer.copy_from_slice(&framebuffer.buffer);
+            snow::update(&mut snowflakes, WIDTH, HEIGHT, dt);
+            snow::draw(&snowflakes, &mut display_buffer, WIDTH, HEIGHT);
+
+            window
+                .update_with_buffer(&display_buffer, WIDTH, HEIGHT)
+                .unwrap();
+        } else {
+            window
+                .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
+                .unwrap();
+        }
 
         std::thread::sleep(frame_delay);
     }
