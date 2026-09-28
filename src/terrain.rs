@@ -1,5 +1,5 @@
 use crate::cube::Cube;
-use crate::materials::Materials;
+use crate::materials::{pick_ground_snow, Materials};
 use crate::ray_intersect::RayIntersect;
 use nalgebra_glm::Vec3;
 
@@ -117,6 +117,23 @@ pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, gr
                     _ => Cube::new_box(center, size, cube_size, materials.stone.clone()),
                 };
                 objects.push(Box::new(block));
+
+
+                const SNOW_HEIGHT: f32 = 0.08;
+                let top_y = center.y + size.y / 2.0;
+                for c in col..end {
+                    if let Some(variant) = pick_ground_snow(&materials.snow_toppers) {
+                        let x = (c + GRID_MIN) as f32 * cube_size;
+                        let mut snow_cube = Cube::new_box(
+                            Vec3::new(x, top_y + SNOW_HEIGHT / 2.0, z),
+                            Vec3::new(cube_size, SNOW_HEIGHT, cube_size),
+                            cube_size,
+                            variant.material.clone(),
+                        );
+                        snow_cube.casts_shadow = variant.casts_shadow;
+                        objects.push(Box::new(snow_cube));
+                    }
+                }
             }
 
             col = end;

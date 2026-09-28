@@ -123,4 +123,8 @@ pub trait RayIntersect: Sync {
     fn contains_point(&self, _point: &Vec3) -> bool {
         false
     }
+
+    fn casts_shadow(&self) -> bool {
+        true
+    }
 }

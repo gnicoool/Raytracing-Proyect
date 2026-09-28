@@ -83,9 +83,10 @@ pub fn cast_shadow(
     let light_distance = (light.position - intersect.point).magnitude();
 
     objects.iter().any(|object| {
-        object
-            .ray_intersect(&shadow_ray_origin, light_direction)
-            .is_some_and(|blocker| blocker.distance < light_distance)
+        object.casts_shadow()
+            && object
+                .ray_intersect(&shadow_ray_origin, light_direction)
+                .is_some_and(|blocker| blocker.distance < light_distance)
     })
 }
 
@@ -288,6 +289,9 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
     let grid_min = terrain::GRID_MIN;
     let grid_max = terrain::grid_max();
 
+    let snow = materials.snow_toppers.as_slice();
+    let bare_season = season == Season::Autumn;
+
     // Esquina inferior izquierda: un árbol grande.
     vegetation::add_big_tree(
         &mut objects,
@@ -298,19 +302,33 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
         &materials.log_side,
         &materials.log_top,
         &materials.leaves,
+        snow,
     );
 
-    // Esquina superior derecha: un árbol grande.
-    vegetation::add_big_tree(
-        &mut objects,
-        (grid_max - 1) as f32,
-        (grid_min + 1) as f32,
-        GROUND_Y,
-        CUBE_SIZE,
-        &materials.log_side,
-        &materials.log_top,
-        &materials.leaves,
-    );
+    // Esquina superior derecha: un árbol grande
+    if bare_season {
+        vegetation::add_bare_tree(
+            &mut objects,
+            (grid_max - 1) as f32,
+            (grid_min + 1) as f32,
+            GROUND_Y,
+            CUBE_SIZE,
+            &materials.log_side,
+            &materials.log_top,
+        );
+    } else {
+        vegetation::add_big_tree(
+            &mut objects,
+            (grid_max - 1) as f32,
+            (grid_min + 1) as f32,
+            GROUND_Y,
+            CUBE_SIZE,
+            &materials.log_side,
+            &materials.log_top,
+            &materials.leaves,
+            snow,
+        );
+    }
 
     // Esquina superior izquierda: sin árboles, solo 3 arbustos.
     for &(x, z) in &[
@@ -318,7 +336,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
         ((grid_min + 3) as f32, (grid_max - 3) as f32),
         ((grid_min + 2) as f32, (grid_max - 1) as f32),
     ] {
-        vegetation::add_bush(&mut objects, x, z, GROUND_Y, CUBE_SIZE, &materials.leaves);
+        vegetation::add_bush(&mut objects, x, z, GROUND_Y, CUBE_SIZE, &materials.leaves, snow);
     }
 
     // Esquina inferior derecha: 3 árboles grandes y 2 pequeños entre ellos.
@@ -327,16 +345,29 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
         ((grid_max - 1) as f32, (grid_max - 3) as f32),
         ((grid_max - 2) as f32, (grid_max - 1) as f32),
     ] {
-        vegetation::add_big_tree(
-            &mut objects,
-            x,
-            z,
-            GROUND_Y,
-            CUBE_SIZE,
-            &materials.log_side,
-            &materials.log_top,
-            &materials.leaves,
-        );
+        if bare_season && x == (grid_max - 3) as f32 && z == (grid_max - 3) as f32 {
+            vegetation::add_bare_tree(
+                &mut objects,
+                x,
+                z,
+                GROUND_Y,
+                CUBE_SIZE,
+                &materials.log_side,
+                &materials.log_top,
+            );
+        } else {
+            vegetation::add_big_tree(
+                &mut objects,
+                x,
+                z,
+                GROUND_Y,
+                CUBE_SIZE,
+                &materials.log_side,
+                &materials.log_top,
+                &materials.leaves,
+                snow,
+            );
+        }
     }
     for &(x, z) in &[
         ((grid_max - 2) as f32, (grid_max - 3) as f32),
@@ -351,6 +382,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
             &materials.log_side,
             &materials.log_top,
             &materials.leaves,
+            snow,
         );
     }
 

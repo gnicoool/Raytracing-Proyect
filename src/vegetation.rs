@@ -1,6 +1,32 @@
 use crate::cube::Cube;
+use crate::materials::{pick_snow, SnowVariant};
 use crate::ray_intersect::{Material, RayIntersect};
 use nalgebra_glm::Vec3;
+
+/// Coloca un cubo de hojas y, con una variante de `snow`, un cubo fino de nieve encima
+// para que en Invierno las hojas de abajo sigan siendo visibles en los huecos en vez de taparse por completo.
+fn push_leaf(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    center: Vec3,
+    size: Vec3,
+    tile_size: f32,
+    leaves: &Material,
+    snow: &[SnowVariant],
+) {
+    objects.push(Box::new(Cube::new_box(center, size, tile_size, leaves.clone())));
+
+    if let Some(variant) = pick_snow(snow) {
+        let snow_h = size.y.min(size.x) * 0.3;
+        let mut cap = Cube::new_box(
+            Vec3::new(center.x, center.y + size.y / 2.0 + snow_h / 2.0, center.z),
+            Vec3::new(size.x, snow_h, size.z),
+            tile_size,
+            variant.material.clone(),
+        );
+        cap.casts_shadow = variant.casts_shadow;
+        objects.push(Box::new(cap));
+    }
+}
 
 /// Arbusto suelto: cruz de 5 cubos de hojas a ras de suelo con uno arriba, sin tronco.
 pub fn add_bush(
@@ -10,14 +36,53 @@ pub fn add_bush(
     ground_y: f32,
     cube_size: f32,
     leaves: &Material,
+    snow: &[SnowVariant],
 ) {
     let y = ground_y + cube_size;
 
     for &(dx, dz) in &[(0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
-        objects.push(Box::new(Cube::new(Vec3::new(x + dx, y, z + dz), cube_size, leaves.clone())));
+        push_leaf(
+            objects,
+            Vec3::new(x + dx, y, z + dz),
+            Vec3::new(cube_size, cube_size, cube_size),
+            cube_size,
+            leaves,
+            snow,
+        );
     }
 
-    objects.push(Box::new(Cube::new(Vec3::new(x, y + cube_size, z), cube_size, leaves.clone())));
+    push_leaf(
+        objects,
+        Vec3::new(x, y + cube_size, z),
+        Vec3::new(cube_size, cube_size, cube_size),
+        cube_size,
+        leaves,
+        snow,
+    );
+}
+
+fn add_trunk(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    tree_x: f32,
+    tree_z: f32,
+    ground_y: f32,
+    cube_size: f32,
+    trunk_height: f32,
+    trunk_width: f32,
+    log_side: &Material,
+    log_top: &Material,
+) -> f32 {
+    let mut trunk = Cube::new_box(
+        Vec3::new(tree_x, ground_y + cube_size * trunk_height / 2.0 + cube_size / 2.0, tree_z),
+        Vec3::new(trunk_width, cube_size * trunk_height, trunk_width),
+        cube_size,
+        log_side.clone(),
+    );
+    trunk.top = log_top.clone();
+    trunk.bottom = log_top.clone();
+    objects.push(Box::new(trunk));
+
+    ground_y + cube_size * (trunk_height + 1.0)
 }
 
 /// Árbol grande: tronco alto y copa en varias capas, con cubos pequeños que
@@ -31,62 +96,65 @@ pub fn add_big_tree(
     log_side: &Material,
     log_top: &Material,
     leaves: &Material,
+    snow: &[SnowVariant],
 ) {
     const TRUNK_HEIGHT: f32 = 4.0;
 
-    let mut trunk = Cube::new_box(
-        Vec3::new(tree_x, ground_y + cube_size * TRUNK_HEIGHT / 2.0 + cube_size / 2.0, tree_z),
-        Vec3::new(cube_size, cube_size * TRUNK_HEIGHT, cube_size),
-        cube_size,
-        log_side.clone(),
+    let base_y = add_trunk(
+        objects, tree_x, tree_z, ground_y, cube_size, TRUNK_HEIGHT, cube_size, log_side, log_top,
     );
-    trunk.top = log_top.clone();
-    trunk.bottom = log_top.clone();
-    objects.push(Box::new(trunk));
-
-    let base_y = ground_y + cube_size * (TRUNK_HEIGHT + 1.0);
 
     // Capa 1: cuerpo ancho 3x3 completo.
     for dx in -1..=1 {
         for dz in -1..=1 {
-            objects.push(Box::new(Cube::new(
+            push_leaf(
+                objects,
                 Vec3::new(tree_x + dx as f32, base_y, tree_z + dz as f32),
+                Vec3::new(cube_size, cube_size, cube_size),
                 cube_size,
-                leaves.clone(),
-            )));
+                leaves,
+                snow,
+            );
         }
     }
 
     // Capa 2: cruz
     for &(dx, dz) in &[(0.0, 0.0), (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
-        objects.push(Box::new(Cube::new(
+        push_leaf(
+            objects,
             Vec3::new(tree_x + dx, base_y + cube_size, tree_z + dz),
+            Vec3::new(cube_size, cube_size, cube_size),
             cube_size,
-            leaves.clone(),
-        )));
+            leaves,
+            snow,
+        );
     }
 
     // Cubos pequeños que sobresalen en las diagonales
     const BUMP: f32 = 0.6;
     for &(dx, dz) in &[(1.4, 1.4), (-1.4, 1.4), (1.4, -1.4), (-1.4, -1.4)] {
-        objects.push(Box::new(Cube::new_box(
+        push_leaf(
+            objects,
             Vec3::new(tree_x + dx, base_y + cube_size * 0.7, tree_z + dz),
             Vec3::new(BUMP, BUMP, BUMP),
             BUMP,
-            leaves.clone(),
-        )));
+            leaves,
+            snow,
+        );
     }
 
     // Capa 3: cruz de cubos chiquitos en la punta.
     const TIP: f32 = 0.5;
     let tip_y = base_y + cube_size * 2.0;
     for &(dx, dz) in &[(0.0, 0.0), (0.6, 0.0), (-0.6, 0.0), (0.0, 0.6), (0.0, -0.6)] {
-        objects.push(Box::new(Cube::new_box(
+        push_leaf(
+            objects,
             Vec3::new(tree_x + dx, tip_y, tree_z + dz),
             Vec3::new(TIP, TIP, TIP),
             TIP,
-            leaves.clone(),
-        )));
+            leaves,
+            snow,
+        );
     }
 }
 
@@ -100,34 +168,73 @@ pub fn add_small_tree(
     log_side: &Material,
     log_top: &Material,
     leaves: &Material,
+    snow: &[SnowVariant],
 ) {
     const TRUNK_HEIGHT: f32 = 2.0;
 
-    let mut trunk = Cube::new_box(
-        Vec3::new(tree_x, ground_y + cube_size * TRUNK_HEIGHT / 2.0 + cube_size / 2.0, tree_z),
-        Vec3::new(cube_size * 0.6, cube_size * TRUNK_HEIGHT, cube_size * 0.6),
+    let base_y = add_trunk(
+        objects,
+        tree_x,
+        tree_z,
+        ground_y,
         cube_size,
-        log_side.clone(),
+        TRUNK_HEIGHT,
+        cube_size * 0.6,
+        log_side,
+        log_top,
     );
-    trunk.top = log_top.clone();
-    trunk.bottom = log_top.clone();
-    objects.push(Box::new(trunk));
-
-    let base_y = ground_y + cube_size * (TRUNK_HEIGHT + 1.0);
 
     for &(dx, dz) in &[(0.0, 0.0), (0.6, 0.0), (-0.6, 0.0), (0.0, 0.6), (0.0, -0.6)] {
-        objects.push(Box::new(Cube::new_box(
+        push_leaf(
+            objects,
             Vec3::new(tree_x + dx, base_y, tree_z + dz),
             Vec3::new(0.7, 0.7, 0.7),
             0.7,
-            leaves.clone(),
-        )));
+            leaves,
+            snow,
+        );
     }
 
-    objects.push(Box::new(Cube::new_box(
+    push_leaf(
+        objects,
         Vec3::new(tree_x, base_y + 0.6, tree_z),
         Vec3::new(0.5, 0.5, 0.5),
         0.5,
-        leaves.clone(),
-    )));
+        leaves,
+        snow,
+    );
+}
+
+pub fn add_bare_tree(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    tree_x: f32,
+    tree_z: f32,
+    ground_y: f32,
+    cube_size: f32,
+    log_side: &Material,
+    log_top: &Material,
+) {
+    const TRUNK_HEIGHT: f32 = 4.0;
+
+    let base_y = add_trunk(
+        objects, tree_x, tree_z, ground_y, cube_size, TRUNK_HEIGHT, cube_size, log_side, log_top,
+    );
+
+    const BRANCH_LEN: f32 = 0.45;
+    for &(dx, dz, dy) in &[
+        (1.0, 0.3, 0.0),
+        (-0.9, -0.4, 0.3),
+        (0.3, 1.0, -0.2),
+        (-0.3, -1.0, 0.4),
+    ] {
+        let mut branch = Cube::new_box(
+            Vec3::new(tree_x + dx * 0.7, base_y + dy, tree_z + dz * 0.7),
+            Vec3::new(BRANCH_LEN, BRANCH_LEN * 0.6, BRANCH_LEN),
+            BRANCH_LEN,
+            log_side.clone(),
+        );
+        branch.top = log_top.clone();
+        branch.bottom = log_top.clone();
+        objects.push(Box::new(branch));
+    }
 }

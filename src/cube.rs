@@ -10,20 +10,10 @@ pub struct Cube {
     pub top: Material,
     pub side: Material,
     pub bottom: Material,
+    pub casts_shadow: bool,
 }
 
 impl Cube {
-    pub fn new(center: Vec3, size: f32, material: Material) -> Self {
-        Cube {
-            center,
-            size: Vec3::new(size, size, size),
-            tile_size: size,
-            top: material.clone(),
-            side: material.clone(),
-            bottom: material,
-        }
-    }
-
     /// Crea una caja que fusiona varios cubos del mismo material en un solo
     /// objeto, repitiendo la textura cada por unidades de mundo
     pub fn new_box(center: Vec3, size: Vec3, tile_size: f32, material: Material) -> Self {
@@ -34,6 +24,7 @@ impl Cube {
             top: material.clone(),
             side: material.clone(),
             bottom: material,
+            casts_shadow: true,
         }
     }
 }
@@ -134,5 +125,9 @@ impl RayIntersect for Cube {
         let diff = point - self.center;
 
         diff.x.abs() <= half.x && diff.y.abs() <= half.y && diff.z.abs() <= half.z
+    }
+
+    fn casts_shadow(&self) -> bool {
+        self.casts_shadow
     }
 }
