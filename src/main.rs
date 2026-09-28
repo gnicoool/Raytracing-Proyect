@@ -5,19 +5,22 @@ mod light;
 mod ray_intersect;
 mod cube;
 mod texture;
+mod materials;
+mod terrain;
+mod sanctuary;
+mod vegetation;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
 use std::f32::consts::PI;
-use std::sync::Arc;
 use std::time::Duration;
 
 use crate::camera::Camera;
 use crate::color::Color;
 use crate::framebuffer::Framebuffer;
 use crate::light::Light;
-use crate::ray_intersect::{Intersect, Material, RayIntersect};
-use crate::cube::Cube;
+use crate::materials::Materials;
+use crate::ray_intersect::{Intersect, RayIntersect};
 use crate::texture::Texture;
 
 const WIDTH: usize = 800;
@@ -275,54 +278,7 @@ fn main() {
 
     let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
 
-    let grass_top = Material::new_with_texture(
-        5.0,
-        [0.9, 0.05, 0.0],
-        Arc::new(Texture::from_file("assets/textures/grass_top.png")),
-    );
-    let grass_side = Material::new_with_texture(
-        5.0,
-        [0.9, 0.05, 0.0],
-        Arc::new(Texture::from_file("assets/textures/grass_side.png")),
-    );
-    let dirt = Material::new_with_texture(
-        5.0,
-        [0.9, 0.05, 0.0],
-        Arc::new(Texture::from_file("assets/textures/dirt.png")),
-    );
-    let stone = Material::new_with_texture(
-        15.0,
-        [0.8, 0.15, 0.05],
-        Arc::new(Texture::from_file("assets/textures/stone.png")),
-    );
-    let log_top = Material::new_with_texture(
-        8.0,
-        [0.85, 0.05, 0.0],
-        Arc::new(Texture::from_file("assets/textures/oak_log_top.png")),
-    );
-    let log_side = Material::new_with_texture(
-        8.0,
-        [0.85, 0.05, 0.0],
-        Arc::new(Texture::from_file("assets/textures/oak_log_side.png")),
-    );
-    let leaves = Material::new_with_texture(
-        3.0,
-        [0.9, 0.05, 0.0],
-        Arc::new(Texture::from_file("assets/textures/oak_leaves.png")),
-    );
-    let ice = Material::new_with_texture_transparency(
-        120.0,
-        [0.05, 0.3, 0.2],
-        Arc::new(Texture::from_file("assets/textures/ice.png")),
-        0.8,
-        1.31,
-    );
-    let iron = Material::new_with_texture(
-        1200.0,
-        [0.05, 0.2, 0.8],
-        Arc::new(Texture::from_file("assets/textures/iron_block.png")),
-    );
-
+    let materials = Materials::load();
     let skybox = Texture::from_file("assets/textures/sky.png");
 
     const CUBE_SIZE: f32 = 1.0;
@@ -330,178 +286,79 @@ fn main() {
 
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
 
-    // G = pasto, T = tierra expuesta, S = piedra/acantilado a nivel de arriba,
-    // B = hielo del lago, W = piso del santuario bajo los pilares a nivel de abajo
-    const GRID_SIZE: usize = 18;
-    const GRID_MIN: i32 = -9;
-    const TERRAIN: [&str; GRID_SIZE] = [
-        "GGGGGSSBBBBBBSSSSS",
-        "GGGGTTBBBBBBBSSSGG",
-        "GGGGTBBBBBBBBBBBGG",
-        "GGGGTBBBBBBBBBBBTG",
-        "GGGGTBBBBBBBBBBBGG",
-        "GGGTBBBBBBBBBBBBGG",
-        "GGTBBBBBBBBBBBBBBG",
-        "STBBBBBBBBBBBBBBBB",
-        "SBBBBBWWWBBBBBBBBS",
-        "BBBBBBWWWBBBBBBBSS",
-        "BBBBBBWWWBBBBBBBTG",
-        "BBBBBBBBBBBBBBBGGG",
-        "SBBBGBBBBBBBBBTGGG",
-        "TTTGGBBBBBBBBTGGGG",
-        "TGGGGBBBBBBBTTGGGG",
-        "TGGGTBBBBBBTGGGGGG",
-        "GGGGTBBBBBTTTGGGGG",
-        "GGGTTSSSSSSTTGGGGG",
-    ];
+    terrain::build(&mut objects, &materials, GROUND_Y, CUBE_SIZE);
 
-    let lower_exception = |row: i32, col: i32| matches!((row, col), (6, 17) | (12, 4) | (13, 4));
-    const DOCK_ROW_START: i32 = 11;
-    const DOCK_ROW_END: i32 = 17;
-    let is_dock = |row: i32, col: i32| col == 7 && (DOCK_ROW_START..=DOCK_ROW_END).contains(&row);
+    let (sanctuary_x, sanctuary_z) = terrain::sanctuary_center();
+    sanctuary::build(&mut objects, &materials, GROUND_Y, CUBE_SIZE, sanctuary_x, sanctuary_z);
 
-    objects.push(Box::new(Cube::new_box(
-        Vec3::new(-0.5, GROUND_Y - 2.0, -0.5),
-        Vec3::new(GRID_SIZE as f32 * CUBE_SIZE, CUBE_SIZE, GRID_SIZE as f32 * CUBE_SIZE),
+    let grid_min = terrain::GRID_MIN;
+    let grid_max = terrain::grid_max();
+
+    // Esquina inferior izquierda: un árbol grande.
+    vegetation::add_big_tree(
+        &mut objects,
+        (grid_min + 1) as f32,
+        (grid_min + 1) as f32,
+        GROUND_Y,
         CUBE_SIZE,
-        stone.clone(),
-    )));
+        &materials.log_side,
+        &materials.log_top,
+        &materials.leaves,
+    );
 
-    for row in 0..GRID_SIZE as i32 {
-        let chars: Vec<char> = TERRAIN[row as usize].chars().collect();
-        let z = (row + GRID_MIN) as f32 * CUBE_SIZE;
+    // Esquina superior derecha: un árbol grande.
+    vegetation::add_big_tree(
+        &mut objects,
+        (grid_max - 1) as f32,
+        (grid_min + 1) as f32,
+        GROUND_Y,
+        CUBE_SIZE,
+        &materials.log_side,
+        &materials.log_top,
+        &materials.leaves,
+    );
 
-        let mut col = 0i32;
-        while col < GRID_SIZE as i32 {
-            if is_dock(row, col) {
-                let x = (col + GRID_MIN) as f32 * CUBE_SIZE;
-                // Rampa suave: en la fila 11 el muelle queda a la altura del piso del
-                // santuario (-1.5) y en la fila 17 a la altura de la orilla (-0.5).
-                let t = (row - DOCK_ROW_START) as f32 / (DOCK_ROW_END - DOCK_ROW_START) as f32;
-                let plank_top = -1.5 + t * 1.0;
-                let mut plank = Cube::new_box(
-                    Vec3::new(x, plank_top - 0.1, z),
-                    Vec3::new(CUBE_SIZE, 0.2, CUBE_SIZE),
-                    CUBE_SIZE,
-                    log_side.clone(),
-                );
-                plank.top = log_top.clone();
-                objects.push(Box::new(plank));
-                col += 1;
-                continue;
-            }
-
-            let ch = chars[col as usize];
-            let lower = matches!(ch, 'B' | 'W') || lower_exception(row, col);
-
-            // Fusiona en una sola caja las celdas consecutivas del mismo tipo/nivel.
-            let mut end = col + 1;
-            while end < GRID_SIZE as i32 && !is_dock(row, end) {
-                let e_ch = chars[end as usize];
-                let e_lower = matches!(e_ch, 'B' | 'W') || lower_exception(row, end);
-                if e_lower != lower || (!lower && e_ch != ch) {
-                    break;
-                }
-                end += 1;
-            }
-
-            let run_len = (end - col) as f32;
-            let x_center = (col + GRID_MIN) as f32 * CUBE_SIZE + (run_len - 1.0) * CUBE_SIZE / 2.0;
-
-            if lower {
-                objects.push(Box::new(Cube::new_box(
-                    Vec3::new(x_center, GROUND_Y - 1.0, z),
-                    Vec3::new(run_len * CUBE_SIZE, CUBE_SIZE, CUBE_SIZE),
-                    CUBE_SIZE,
-                    ice.clone(),
-                )));
-            } else {
-                let size = Vec3::new(run_len * CUBE_SIZE, 2.0 * CUBE_SIZE, CUBE_SIZE);
-                let center = Vec3::new(x_center, GROUND_Y - 0.5, z);
-
-                let block: Cube = match ch {
-                    'G' => {
-                        let mut b = Cube::new_box(center, size, CUBE_SIZE, grass_side.clone());
-                        b.top = grass_top.clone();
-                        b.bottom = dirt.clone();
-                        b
-                    }
-                    'T' => Cube::new_box(center, size, CUBE_SIZE, dirt.clone()),
-                    _ => Cube::new_box(center, size, CUBE_SIZE, stone.clone()),
-                };
-                objects.push(Box::new(block));
-            }
-
-            col = end;
-        }
+    // Esquina superior izquierda: sin árboles, solo 3 arbustos.
+    for &(x, z) in &[
+        ((grid_min + 1) as f32, (grid_max - 3) as f32),
+        ((grid_min + 3) as f32, (grid_max - 3) as f32),
+        ((grid_min + 2) as f32, (grid_max - 1) as f32),
+    ] {
+        vegetation::add_bush(&mut objects, x, z, GROUND_Y, CUBE_SIZE, &materials.leaves);
     }
 
-    const PILLAR_HEIGHT: f32 = 3.0;
-    let pillar_base_y = GROUND_Y - 1.5;
-
-    let add_iron_pillar = |objects: &mut Vec<Box<dyn RayIntersect>>, x: f32, z: f32| {
-        objects.push(Box::new(Cube::new_box(
-            Vec3::new(x, pillar_base_y + CUBE_SIZE * PILLAR_HEIGHT / 2.0, z),
-            Vec3::new(CUBE_SIZE, CUBE_SIZE * PILLAR_HEIGHT, CUBE_SIZE),
+    // Esquina inferior derecha: 3 árboles grandes y 2 pequeños entre ellos.
+    for &(x, z) in &[
+        ((grid_max - 3) as f32, (grid_max - 3) as f32),
+        ((grid_max - 1) as f32, (grid_max - 3) as f32),
+        ((grid_max - 2) as f32, (grid_max - 1) as f32),
+    ] {
+        vegetation::add_big_tree(
+            &mut objects,
+            x,
+            z,
+            GROUND_Y,
             CUBE_SIZE,
-            iron.clone(),
-        )));
-    };
-
-    let sanctuary_x = (6 + GRID_MIN) as f32 + 1.0;
-    let sanctuary_z = (8 + GRID_MIN) as f32 + 1.0;
-
-    for &px in &[sanctuary_x - 1.0, sanctuary_x + 1.0] {
-        for &pz in &[sanctuary_z - 1.0, sanctuary_z + 1.0] {
-            add_iron_pillar(&mut objects, px, pz);
-        }
-    }
-
-    const ROOF_THICKNESS: f32 = 0.4;
-    objects.push(Box::new(Cube::new_box(
-        Vec3::new(sanctuary_x, pillar_base_y + CUBE_SIZE * PILLAR_HEIGHT + ROOF_THICKNESS / 2.0, sanctuary_z),
-        Vec3::new(3.0, ROOF_THICKNESS, 3.0),
-        CUBE_SIZE,
-        iron.clone(),
-    )));
-
-    let add_tree = |objects: &mut Vec<Box<dyn RayIntersect>>, tree_x: f32, tree_z: f32| {
-        const TRUNK_HEIGHT: f32 = 3.0;
-
-        let mut trunk = Cube::new_box(
-            Vec3::new(tree_x, GROUND_Y + CUBE_SIZE * TRUNK_HEIGHT / 2.0 + CUBE_SIZE / 2.0, tree_z),
-            Vec3::new(CUBE_SIZE, CUBE_SIZE * TRUNK_HEIGHT, CUBE_SIZE),
-            CUBE_SIZE,
-            log_side.clone(),
+            &materials.log_side,
+            &materials.log_top,
+            &materials.leaves,
         );
-        trunk.top = log_top.clone();
-        trunk.bottom = log_top.clone();
-        objects.push(Box::new(trunk));
-
-        let leaves_base_y = GROUND_Y + CUBE_SIZE * 4.0;
-
-        for dx in -1..=1 {
-            for dz in -1..=1 {
-                for dy in 0..=1 {
-                    if dx == 0 && dz == 0 && dy == 0 {
-                        continue;
-                    }
-
-                    objects.push(Box::new(Cube::new(
-                        Vec3::new(tree_x + dx as f32, leaves_base_y + dy as f32, tree_z + dz as f32),
-                        CUBE_SIZE,
-                        leaves.clone(),
-                    )));
-                }
-            }
-        }
-    };
-
-    let grid_max = GRID_MIN + GRID_SIZE as i32 - 1;
-    add_tree(&mut objects, (GRID_MIN + 1) as f32, (GRID_MIN + 1) as f32);
-    add_tree(&mut objects, (grid_max - 1) as f32, (GRID_MIN + 1) as f32);
-    add_tree(&mut objects, (GRID_MIN + 1) as f32, (grid_max - 1) as f32);
-    add_tree(&mut objects, (grid_max - 1) as f32, (grid_max - 1) as f32);
+    }
+    for &(x, z) in &[
+        ((grid_max - 2) as f32, (grid_max - 3) as f32),
+        ((grid_max - 3) as f32, (grid_max - 1) as f32),
+    ] {
+        vegetation::add_small_tree(
+            &mut objects,
+            x,
+            z,
+            GROUND_Y,
+            CUBE_SIZE,
+            &materials.log_side,
+            &materials.log_top,
+            &materials.leaves,
+        );
+    }
 
     let light = Light::new(Vec3::new(-10.0, 16.0, 16.0), Color::new(255, 255, 255), 1.5);
 
