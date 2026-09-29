@@ -58,6 +58,45 @@ impl Texture {
         Texture { width: size, height: size, data, alpha }
     }
 
+    /// Genera una textura procedural con unas pocas "cruces" de un solo
+    /// color sobre fondo transparente (florecitas simples). `count` es
+    /// cuántas cruces colocar, cada una centrada en una celda al azar de
+    /// una cuadrícula gruesa.
+    pub fn flower_pattern(size: usize, count: usize, color: u32) -> Texture {
+        use rand::Rng;
+
+        const CELLS: usize = 8;
+        let mut rng = rand::thread_rng();
+        let mut cell_on = [[false; CELLS]; CELLS];
+
+        for _ in 0..count {
+            let cx = rng.gen_range(1..CELLS - 1);
+            let cy = rng.gen_range(1..CELLS - 1);
+
+            cell_on[cy][cx] = true;
+            cell_on[cy][cx - 1] = true;
+            cell_on[cy][cx + 1] = true;
+            cell_on[cy - 1][cx] = true;
+            cell_on[cy + 1][cx] = true;
+        }
+
+        let mut data = Vec::with_capacity(size * size);
+        let mut alpha = Vec::with_capacity(size * size);
+
+        for y in 0..size {
+            for x in 0..size {
+                let cx = (x * CELLS / size).min(CELLS - 1);
+                let cy = (y * CELLS / size).min(CELLS - 1);
+                let on = cell_on[cy][cx];
+
+                data.push(if on { color } else { 0 });
+                alpha.push(if on { 255 } else { 0 });
+            }
+        }
+
+        Texture { width: size, height: size, data, alpha }
+    }
+
     pub fn from_file(path: &str) -> Self {
         let img = image::open(path)
             .unwrap_or_else(|e| panic!("no se pudo cargar la textura '{}': {}", path, e))

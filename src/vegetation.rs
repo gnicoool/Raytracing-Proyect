@@ -1,5 +1,5 @@
 use crate::cube::Cube;
-use crate::materials::{pick_snow, SnowVariant};
+use crate::materials::{pick_snow, PatchVariant};
 use crate::ray_intersect::{Material, RayIntersect};
 use nalgebra_glm::Vec3;
 
@@ -11,7 +11,8 @@ fn push_leaf(
     size: Vec3,
     tile_size: f32,
     leaves: &Material,
-    snow: &[SnowVariant],
+    snow: &[PatchVariant],
+    apple: Option<&Material>,
 ) {
     objects.push(Box::new(Cube::new_box(center, size, tile_size, leaves.clone())));
 
@@ -26,6 +27,30 @@ fn push_leaf(
         cap.casts_shadow = variant.casts_shadow;
         objects.push(Box::new(cap));
     }
+
+    if let Some(apple_material) = apple {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let apple_size = size.x.min(size.y).min(size.z) * 0.55;
+
+        // Hasta 3 manzanas por cubo de hojas.
+        for &(ox, oz) in &[(0.0, 0.0), (0.35, -0.25), (-0.3, 0.3)] {
+            if rng.gen_bool(0.35) {
+                let jitter_x = ox * size.x + rng.gen_range(-0.1..0.1) * size.x;
+                let jitter_z = oz * size.z + rng.gen_range(-0.1..0.1) * size.z;
+                objects.push(Box::new(Cube::new_box(
+                    Vec3::new(
+                        center.x + jitter_x,
+                        center.y - size.y / 2.0 - apple_size * 0.25,
+                        center.z + jitter_z,
+                    ),
+                    Vec3::new(apple_size, apple_size, apple_size),
+                    apple_size,
+                    apple_material.clone(),
+                )));
+            }
+        }
+    }
 }
 
 /// Arbusto suelto: cruz de 5 cubos de hojas a ras de suelo con uno arriba, sin tronco.
@@ -36,7 +61,7 @@ pub fn add_bush(
     ground_y: f32,
     cube_size: f32,
     leaves: &Material,
-    snow: &[SnowVariant],
+    snow: &[PatchVariant],
 ) {
     let y = ground_y + cube_size;
 
@@ -48,6 +73,7 @@ pub fn add_bush(
             cube_size,
             leaves,
             snow,
+            None,
         );
     }
 
@@ -58,6 +84,7 @@ pub fn add_bush(
         cube_size,
         leaves,
         snow,
+        None,
     );
 }
 
@@ -96,7 +123,8 @@ pub fn add_big_tree(
     log_side: &Material,
     log_top: &Material,
     leaves: &Material,
-    snow: &[SnowVariant],
+    snow: &[PatchVariant],
+    apple: Option<&Material>,
 ) {
     const TRUNK_HEIGHT: f32 = 4.0;
 
@@ -114,6 +142,7 @@ pub fn add_big_tree(
                 cube_size,
                 leaves,
                 snow,
+                apple,
             );
         }
     }
@@ -127,6 +156,7 @@ pub fn add_big_tree(
             cube_size,
             leaves,
             snow,
+            apple,
         );
     }
 
@@ -140,6 +170,7 @@ pub fn add_big_tree(
             BUMP,
             leaves,
             snow,
+            apple,
         );
     }
 
@@ -154,6 +185,7 @@ pub fn add_big_tree(
             TIP,
             leaves,
             snow,
+            apple,
         );
     }
 }
@@ -168,7 +200,8 @@ pub fn add_small_tree(
     log_side: &Material,
     log_top: &Material,
     leaves: &Material,
-    snow: &[SnowVariant],
+    snow: &[PatchVariant],
+    apple: Option<&Material>,
 ) {
     const TRUNK_HEIGHT: f32 = 2.0;
 
@@ -192,6 +225,7 @@ pub fn add_small_tree(
             0.7,
             leaves,
             snow,
+            apple,
         );
     }
 
@@ -202,6 +236,7 @@ pub fn add_small_tree(
         0.5,
         leaves,
         snow,
+        apple,
     );
 }
 

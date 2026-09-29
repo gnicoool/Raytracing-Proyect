@@ -22,15 +22,21 @@ pub struct Materials {
     pub lake: Material,
     pub iron: Material,
     pub iron_mirror: Material,
-    pub snow_toppers: Vec<SnowVariant>,
+    pub snow_toppers: Vec<PatchVariant>,
+    /// Parches de flores 
+    pub flower_toppers: Vec<PatchVariant>,
+    /// Colores disponibles para las florecitas 3D 
+    pub flower_colors: Vec<Color>,
+    /// Manzanas colgando de los árboles en Verano
+    pub apple: Option<Material>,
 }
 
-pub struct SnowVariant {
+pub struct PatchVariant {
     pub material: Material,
     pub casts_shadow: bool,
 }
 
-pub fn pick_snow(toppers: &[SnowVariant]) -> Option<&SnowVariant> {
+pub fn pick_snow(toppers: &[PatchVariant]) -> Option<&PatchVariant> {
     if toppers.is_empty() {
         return None;
     }
@@ -40,7 +46,7 @@ pub fn pick_snow(toppers: &[SnowVariant]) -> Option<&SnowVariant> {
     toppers.get(roll)
 }
 
-pub fn pick_ground_snow(toppers: &[SnowVariant]) -> Option<&SnowVariant> {
+pub fn pick_ground_snow(toppers: &[PatchVariant]) -> Option<&PatchVariant> {
     if toppers.is_empty() {
         return None;
     }
@@ -61,6 +67,25 @@ pub fn pick_ground_snow(toppers: &[SnowVariant]) -> Option<&SnowVariant> {
     }
 
     toppers.last()
+}
+
+/// Como `pick_ground_snow`, pero para capas dispersas donde lo
+/// normal es que NO haya nada — `none_weight` es el peso relativo 
+pub fn pick_sparse(variants: &[PatchVariant], none_weight: u32) -> Option<&PatchVariant> {
+    if variants.is_empty() {
+        return None;
+    }
+
+    use rand::Rng;
+    let total = none_weight + variants.len() as u32;
+    let mut roll = rand::thread_rng().gen_range(0..total);
+
+    if roll < none_weight {
+        return None;
+    }
+    roll -= none_weight;
+
+    variants.get(roll as usize)
 }
 
 impl Materials {
@@ -136,7 +161,7 @@ impl Materials {
                 Arc::new(Texture::snow_pattern(16, coverage)),
             );
             m.diffuse = Color::new(245, 250, 255);
-            SnowVariant { material: m, casts_shadow }
+            PatchVariant { material: m, casts_shadow }
         };
 
         let snow_toppers = match season {
@@ -147,6 +172,49 @@ impl Materials {
                 snow_variant(1.0, true),
             ],
             _ => Vec::new(),
+        };
+
+        // Parches de flores (Primavera): textura con unas pocas "cruces" de
+        // color sobre fondo transparente. No ensombrecen el pasto de abajo, igual que los parches de nieve parciales.
+        let flower_variant = |color: Color, count: usize| {
+            let m = Material::new_with_texture(
+                6.0,
+                [0.9, 0.05, 0.0],
+                Arc::new(Texture::flower_pattern(32, count, color.to_hex())),
+            );
+            PatchVariant { material: m, casts_shadow: false }
+        };
+
+        let flower_toppers = match season {
+            Season::Spring => vec![
+                flower_variant(Color::new(220, 50, 60), 3),   // rojas
+                flower_variant(Color::new(250, 215, 60), 3),  // amarillas
+                flower_variant(Color::new(175, 100, 220), 2), // moradas
+                flower_variant(Color::new(250, 248, 235), 3), // blancas
+                flower_variant(Color::new(240, 140, 170), 2), // rosadas
+            ],
+            _ => Vec::new(),
+        };
+
+        let flower_colors = match season {
+            Season::Spring => vec![
+                Color::new(220, 50, 60),
+                Color::new(250, 215, 60),
+                Color::new(175, 100, 220),
+                Color::new(250, 248, 235),
+                Color::new(240, 140, 170),
+            ],
+            _ => Vec::new(),
+        };
+
+        // Manzanas colgando de los árboles, solo en Verano.
+        let apple = match season {
+            Season::Summer => Some(Material::new_with_texture(
+                8.0,
+                [0.85, 0.05, 0.0],
+                Arc::new(Texture::from_file("assets/items/apple.png")),
+            )),
+            _ => None,
         };
 
         // reflectivity (albedo[2]) + transparency deben sumar bastante menos de 1.0,
@@ -198,6 +266,9 @@ impl Materials {
             iron,
             iron_mirror,
             snow_toppers,
+            flower_toppers,
+            flower_colors,
+            apple,
         }
     }
 }

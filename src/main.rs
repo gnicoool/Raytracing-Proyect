@@ -290,6 +290,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
     let grid_max = terrain::grid_max();
 
     let snow = materials.snow_toppers.as_slice();
+    let apple = materials.apple.as_ref();
     let bare_season = season == Season::Autumn;
 
     // Esquina inferior izquierda: un árbol grande.
@@ -303,6 +304,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
         &materials.log_top,
         &materials.leaves,
         snow,
+        apple,
     );
 
     // Esquina superior derecha: un árbol grande
@@ -327,6 +329,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
             &materials.log_top,
             &materials.leaves,
             snow,
+            apple,
         );
     }
 
@@ -366,6 +369,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
                 &materials.log_top,
                 &materials.leaves,
                 snow,
+                apple,
             );
         }
     }
@@ -383,6 +387,7 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
             &materials.log_top,
             &materials.leaves,
             snow,
+            apple,
         );
     }
 

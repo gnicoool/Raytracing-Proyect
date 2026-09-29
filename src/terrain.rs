@@ -1,7 +1,9 @@
+use crate::color::Color;
 use crate::cube::Cube;
-use crate::materials::{pick_ground_snow, Materials};
-use crate::ray_intersect::RayIntersect;
+use crate::materials::{pick_ground_snow, pick_sparse, Materials};
+use crate::ray_intersect::{Material, RayIntersect};
 use nalgebra_glm::Vec3;
+use rand::Rng;
 
 // G = pasto, T = tierra expuesta, S = piedra/acantilado a nivel de arriba,
 // B = hielo del lago, W = piso del santuario bajo los pilares a nivel de abajo.
@@ -122,8 +124,9 @@ pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, gr
                 const SNOW_HEIGHT: f32 = 0.08;
                 let top_y = center.y + size.y / 2.0;
                 for c in col..end {
+                    let x = (c + GRID_MIN) as f32 * cube_size;
+
                     if let Some(variant) = pick_ground_snow(&materials.snow_toppers) {
-                        let x = (c + GRID_MIN) as f32 * cube_size;
                         let mut snow_cube = Cube::new_box(
                             Vec3::new(x, top_y + SNOW_HEIGHT / 2.0, z),
                             Vec3::new(cube_size, SNOW_HEIGHT, cube_size),
@@ -132,6 +135,51 @@ pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, gr
                         );
                         snow_cube.casts_shadow = variant.casts_shadow;
                         objects.push(Box::new(snow_cube));
+                    }
+
+                    // Flores de Primavera: solo en celdas de pasto. La
+                    // mayoría de las celdas no tienen nada `pick_sparse` deja
+                    // "ninguna" con más peso que cualquier variante.
+                    if ch == 'G' {
+                        const FLOWER_HEIGHT: f32 = 0.05;
+                        let none_weight = materials.flower_toppers.len() as u32 / 2;
+                        if let Some(variant) = pick_sparse(&materials.flower_toppers, none_weight) {
+                            let mut patch = Cube::new_box(
+                                Vec3::new(x, top_y + FLOWER_HEIGHT / 2.0, z),
+                                Vec3::new(cube_size, FLOWER_HEIGHT, cube_size),
+                                cube_size,
+                                variant.material.clone(),
+                            );
+                            patch.casts_shadow = variant.casts_shadow;
+                            objects.push(Box::new(patch));
+                        }
+                        //flor 3d
+                        if !materials.flower_colors.is_empty() {
+                            let mut rng = rand::thread_rng();
+                            if rng.gen_bool(0.35) {
+                                const LEAF_SIZE: f32 = 0.12;
+                                const BLOOM_SIZE: f32 = 0.18;
+                                let leaf_material = Material::new(Color::new(60, 150, 60), 5.0, [0.85, 0.05, 0.0]);
+
+                                for &(dx, dz) in &[(0.1, 0.03), (-0.09, -0.07)] {
+                                    objects.push(Box::new(Cube::new_box(
+                                        Vec3::new(x + dx, top_y + LEAF_SIZE / 2.0, z + dz),
+                                        Vec3::new(LEAF_SIZE, LEAF_SIZE, LEAF_SIZE),
+                                        LEAF_SIZE,
+                                        leaf_material.clone(),
+                                    )));
+                                }
+
+                                let color = materials.flower_colors[rng.gen_range(0..materials.flower_colors.len())];
+                                let bloom_material = Material::new(color, 10.0, [0.85, 0.05, 0.0]);
+                                objects.push(Box::new(Cube::new_box(
+                                    Vec3::new(x, top_y + LEAF_SIZE + BLOOM_SIZE / 2.0, z),
+                                    Vec3::new(BLOOM_SIZE, BLOOM_SIZE, BLOOM_SIZE),
+                                    BLOOM_SIZE,
+                                    bloom_material,
+                                )));
+                            }
+                        }
                     }
                 }
             }
