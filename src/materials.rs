@@ -22,6 +22,8 @@ pub struct Materials {
     pub lake: Material,
     pub iron: Material,
     pub iron_mirror: Material,
+    pub ice: Material,
+    pub brick: Material,
     pub snow_toppers: Vec<PatchVariant>,
     /// Parches de flores 
     pub flower_toppers: Vec<PatchVariant>,
@@ -240,7 +242,7 @@ impl Materials {
             1.31,
         );
         let lake = match season {
-            Season::Winter => ice,
+            Season::Winter => ice.clone(),
             _ => water,
         };
 
@@ -254,6 +256,12 @@ impl Materials {
             Arc::new(Texture::from_file("assets/textures/iron_block.png")),
         );
 
+        let brick = Material::new_with_texture(
+            10.0,
+            [0.85, 0.05, 0.0],
+            Arc::new(Texture::from_file("assets/textures/ladrillo.png")),
+        );
+
         Materials {
             grass_top,
             grass_side,
@@ -265,6 +273,8 @@ impl Materials {
             lake,
             iron,
             iron_mirror,
+            ice,
+            brick,
             snow_toppers,
             flower_toppers,
             flower_colors,
