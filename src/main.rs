@@ -10,6 +10,7 @@ mod terrain;
 mod sanctuary;
 mod vegetation;
 mod snow;
+mod fireflies;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -30,7 +31,8 @@ const HEIGHT: usize = 600;
 const FOV: f32 = PI / 3.0;
 
 const ROTATION_SPEED: f32 = PI / 60.0;
-const ZOOM_SPEED: f32 = 0.2;
+const ZOOM_IN_SPEED: f32 = 0.4;
+const ZOOM_OUT_SPEED: f32 = 0.2;
 
 const SHADOW_BIAS: f32 = 1e-3;
 const REFLECTION_BIAS: f32 = 1e-3;
@@ -62,7 +64,7 @@ pub fn refract(incident: &Vec3, normal: &Vec3, refractive_index: f32) -> Option<
     }
 }
 
-pub fn sample_skybox(skybox: &Texture, direction: &Vec3) -> Color {
+pub fn sample_skybox(skybox: &Texture, direction: &Vec3, sky_tint: Color) -> Color {
     let d = direction.normalize();
     let u = 0.5 + d.z.atan2(d.x) / (2.0 * PI);
     let v = 0.5 - d.y.asin() / PI;
@@ -70,17 +72,16 @@ pub fn sample_skybox(skybox: &Texture, direction: &Vec3) -> Color {
     let x = ((u.rem_euclid(1.0)) * skybox.width as f32) as usize;
     let y = ((v.rem_euclid(1.0)) * skybox.height as f32) as usize;
 
-    Color::from_hex(skybox.get_pixel(x, y))
+    Color::from_hex(skybox.get_pixel(x, y)) * sky_tint
 }
 
 pub fn cast_shadow(
     intersect: &Intersect,
     light_direction: &Vec3,
-    light: &Light,
+    light_distance: f32,
     objects: &[Box<dyn RayIntersect>],
 ) -> bool {
     let shadow_ray_origin = intersect.point + intersect.normal * SHADOW_BIAS;
-    let light_distance = (light.position - intersect.point).magnitude();
 
     objects.iter().any(|object| {
         object.casts_shadow()
@@ -93,43 +94,58 @@ pub fn cast_shadow(
 pub fn shade(
     intersect: &Intersect,
     ray_origin: &Vec3,
-    light: &Light,
+    lights: &[Light],
     objects: &[Box<dyn RayIntersect>],
 ) -> Color {
-    let light_direction = (light.position - intersect.point).normalize();
     let view_direction = (ray_origin - intersect.point).normalize();
 
-    let light_intensity = if cast_shadow(intersect, &light_direction, light, objects) {
-        0.0
-    } else {
-        light.intensity
-    };
+    let mut result = Color::new(0, 0, 0);
 
-    let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
-    let diffuse = intersect.material.diffuse_at(intersect.u, intersect.v)
-        * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+    for light in lights {
+        let to_light = light.position - intersect.point;
+        let distance = to_light.magnitude();
+        let attenuation = light.attenuation(distance);
+        if attenuation <= 0.0 {
+            continue;
+        }
 
-    let reflect_direction = reflect(&-light_direction, &intersect.normal);
-    let specular_intensity = dot(&view_direction, &reflect_direction)
-        .max(0.0)
-        .powf(intersect.material.specular);
+        let light_direction = to_light.normalize();
 
-    let specular =
-        light.color * (specular_intensity * intersect.material.albedo[1] * light_intensity);
+        let light_intensity = if cast_shadow(intersect, &light_direction, distance, objects) {
+            0.0
+        } else {
+            light.intensity * attenuation
+        };
 
-    diffuse + specular
+        let diffuse_intensity = dot(&intersect.normal, &light_direction).max(0.0);
+        let diffuse = intersect.material.diffuse_at(intersect.u, intersect.v)
+            * (diffuse_intensity * intersect.material.albedo[0] * light_intensity);
+
+        let reflect_direction = reflect(&-light_direction, &intersect.normal);
+        let specular_intensity = dot(&view_direction, &reflect_direction)
+            .max(0.0)
+            .powf(intersect.material.specular);
+
+        let specular =
+            light.color * (specular_intensity * intersect.material.albedo[1] * light_intensity);
+
+        result = result + diffuse + specular;
+    }
+
+    result
 }
 
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
     objects: &[Box<dyn RayIntersect>],
-    light: &Light,
+    lights: &[Light],
     skybox: &Texture,
+    sky_tint: Color,
     depth: u32,
 ) -> Color {
     if depth > MAX_DEPTH {
-        return sample_skybox(skybox, ray_direction);
+        return sample_skybox(skybox, ray_direction, sky_tint);
     }
 
     let mut closest: Option<Intersect> = None;
@@ -143,10 +159,10 @@ pub fn cast_ray(
     }
 
     let Some(intersect) = closest else {
-        return sample_skybox(skybox, ray_direction);
+        return sample_skybox(skybox, ray_direction, sky_tint);
     };
 
-    let color = shade(&intersect, ray_origin, light, objects);
+    let color = shade(&intersect, ray_origin, lights, objects) + intersect.material.emission;
 
     let reflectivity = intersect.material.albedo[2];
     let transparency = intersect.material.transparency;
@@ -165,8 +181,9 @@ pub fn cast_ray(
             &reflect_origin,
             &reflect_direction,
             objects,
-            light,
+            lights,
             skybox,
+            sky_tint,
             depth + 1,
         );
 
@@ -182,13 +199,13 @@ pub fn cast_ray(
                 let refract_direction = refract_direction.normalize();
                 let refract_origin = intersect.point + bias_normal * REFRACTION_BIAS;
 
-                cast_ray(&refract_origin, &refract_direction, objects, light, skybox, depth + 1)
+                cast_ray(&refract_origin, &refract_direction, objects, lights, skybox, sky_tint, depth + 1)
             }
             None => {
                 let reflect_direction = reflect(ray_direction, &intersect.normal).normalize();
                 let reflect_origin = intersect.point + intersect.normal * REFLECTION_BIAS;
 
-                cast_ray(&reflect_origin, &reflect_direction, objects, light, skybox, depth + 1)
+                cast_ray(&reflect_origin, &reflect_direction, objects, lights, skybox, sky_tint, depth + 1)
             }
         };
 
@@ -202,8 +219,9 @@ pub fn render(
     framebuffer: &mut Framebuffer,
     objects: &[Box<dyn RayIntersect>],
     camera: &Camera,
-    light: &Light,
+    lights: &[Light],
     skybox: &Texture,
+    sky_tint: Color,
     pixel_scale: usize,
 ) {
     let width = framebuffer.width;
@@ -257,7 +275,8 @@ pub fn render(
                             );
 
                             let color =
-                                cast_ray(&eye, &ray_direction, objects, light, skybox, 0).to_hex();
+                                cast_ray(&eye, &ray_direction, objects, lights, skybox, sky_tint, 0)
+                                    .to_hex();
 
                             let end = (x + pixel_scale).min(width);
                             cached_row[x..end].fill(color);
@@ -276,10 +295,13 @@ pub fn render(
 const CUBE_SIZE: f32 = 1.0;
 const GROUND_Y: f32 = -1.0;
 
-fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
+const FIREFLY_COUNT: usize = 8;
+
+fn build_scene(season: Season, night: bool) -> (Materials, Vec<Box<dyn RayIntersect>>, Vec<Light>) {
     let materials = Materials::load(season);
 
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+    let mut fireflies_lights: Vec<Light> = Vec::new();
 
     terrain::build(&mut objects, &materials, GROUND_Y, CUBE_SIZE);
 
@@ -391,7 +413,16 @@ fn build_scene(season: Season) -> (Materials, Vec<Box<dyn RayIntersect>>) {
         );
     }
 
-    (materials, objects)
+    if night {
+        let positions = fireflies::positions(grid_min, grid_max, GROUND_Y, FIREFLY_COUNT);
+        fireflies::build(&mut objects, &mut fireflies_lights, &positions);
+
+        for flame_pos in terrain::torch_flame_positions(GROUND_Y, CUBE_SIZE) {
+            fireflies_lights.push(Light::point(flame_pos, Color::new(255, 120, 40), 1.4, 7.0));
+        }
+    }
+
+    (materials, objects, fireflies_lights)
 }
 
 fn season_name(season: Season) -> &'static str {
@@ -403,24 +434,46 @@ fn season_name(season: Season) -> &'static str {
     }
 }
 
+fn window_title(season: Season, night: bool) -> String {
+    if night {
+        format!("gnicoool - {} (Noche)", season_name(season))
+    } else {
+        format!("gnicoool - {}", season_name(season))
+    }
+}
+
+fn sun_light() -> Light {
+    Light::new(Vec3::new(-10.0, 16.0, 16.0), Color::new(255, 255, 255), 1.5)
+}
+
+fn sky_tint_for(night: bool) -> Color {
+    if night {
+        Color::new(35, 40, 70)
+    } else {
+        Color::new(255, 255, 255)
+    }
+}
+
 fn main() {
     let frame_delay = Duration::from_millis(16);
 
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     let mut display_buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
-    let mut window = Window::new("Lakitu", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+    let mut window = Window::new("gnicoool", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
 
     let skybox = Texture::from_file("assets/textures/sky.png");
 
     let mut season = Season::Summer;
-    let (_materials, mut objects) = build_scene(season);
-    window.set_title(&format!("Lakitu - {}", season_name(season)));
+    let mut night = false;
+    let (_materials, mut objects, firefly_lights) = build_scene(season, night);
+    let mut lights: Vec<Light> = if night { firefly_lights } else { vec![sun_light()] };
+    window.set_title(&window_title(season, night));
 
     let mut snowflakes = snow::new_flakes(200, WIDTH, HEIGHT);
     let mut last_frame = Instant::now();
-
-    let light = Light::new(Vec3::new(-10.0, 16.0, 16.0), Color::new(255, 255, 255), 1.5);
+    let mut last_flicker = Instant::now();
+    const FLICKER_INTERVAL: Duration = Duration::from_secs(4);
 
     let (sanctuary_x, sanctuary_z) = terrain::sanctuary_center();
     let mut camera = Camera::new(
@@ -432,7 +485,7 @@ fn main() {
     // Mientras se orbita/hace zoom se renderiza en baja resolución (bloques de
     // DRAFT_PIXEL_SCALE px) para mantenerlo fluido; al soltar la tecla se hace
     // una pasada final a resolución completa.
-    const DRAFT_PIXEL_SCALE: usize = 4;
+    const DRAFT_PIXEL_SCALE: usize = 3;
 
     let mut needs_sharp_render = true;
 
@@ -465,12 +518,23 @@ fn main() {
         for (key, new_season) in season_keys {
             if window.is_key_pressed(key, minifb::KeyRepeat::No) && new_season != season {
                 season = new_season;
-                let (new_materials, new_objects) = build_scene(season);
+                let (new_materials, new_objects, new_fireflies) = build_scene(season, night);
                 objects = new_objects;
                 drop(new_materials);
-                window.set_title(&format!("Lakitu - {}", season_name(season)));
+                lights = if night { new_fireflies } else { vec![sun_light()] };
+                window.set_title(&window_title(season, night));
                 needs_sharp_render = true;
             }
+        }
+
+        if window.is_key_pressed(Key::N, minifb::KeyRepeat::No) {
+            night = !night;
+            let (new_materials, new_objects, new_fireflies) = build_scene(season, night);
+            objects = new_objects;
+            drop(new_materials);
+            lights = if night { new_fireflies } else { vec![sun_light()] };
+            window.set_title(&window_title(season, night));
+            needs_sharp_render = true;
         }
 
         let orbit = [
@@ -496,10 +560,10 @@ fn main() {
         }
 
         let zoom = [
-            (Key::W, -ZOOM_SPEED),
-            (Key::S, ZOOM_SPEED),
-            (Key::Equal, -ZOOM_SPEED),
-            (Key::Minus, ZOOM_SPEED),
+            (Key::W, -ZOOM_IN_SPEED),
+            (Key::S, ZOOM_OUT_SPEED),
+            (Key::Equal, -ZOOM_IN_SPEED),
+            (Key::Minus, ZOOM_OUT_SPEED),
         ];
 
         for (key, delta) in zoom {
@@ -515,11 +579,19 @@ fn main() {
             }
         }
 
+        if night && last_flicker.elapsed() >= FLICKER_INTERVAL {
+            fireflies::flicker(&mut lights);
+            last_flicker = Instant::now();
+            needs_sharp_render = true;
+        }
+
+        let sky_tint = sky_tint_for(night);
+
         if camera_moving {
-            render(&mut framebuffer, &objects, &camera, &light, &skybox, DRAFT_PIXEL_SCALE);
+            render(&mut framebuffer, &objects, &camera, &lights, &skybox, sky_tint, DRAFT_PIXEL_SCALE);
             needs_sharp_render = true;
         } else if needs_sharp_render {
-            render(&mut framebuffer, &objects, &camera, &light, &skybox, 1);
+            render(&mut framebuffer, &objects, &camera, &lights, &skybox, sky_tint, 1);
             needs_sharp_render = false;
         }
 

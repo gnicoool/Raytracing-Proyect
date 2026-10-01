@@ -32,9 +32,58 @@ const TERRAIN: [&str; GRID_SIZE] = [
 
 const DOCK_ROW_START: i32 = 11;
 const DOCK_ROW_END: i32 = 17;
+const TORCH_COLS: [i32; 2] = [6, 8];
+const TORCH_POLE_HEIGHT: f32 = 0.7;
+const TORCH_FLAME_SIZE: f32 = 0.28;
 
 pub fn grid_max() -> i32 {
     GRID_MIN + GRID_SIZE as i32 - 1
+}
+
+fn torch_foot_positions(ground_y: f32, cube_size: f32) -> [Vec3; 2] {
+    let z = (DOCK_ROW_END + GRID_MIN) as f32 * cube_size;
+    let foot_y = ground_y + 0.5 * cube_size;
+
+    TORCH_COLS.map(|col| {
+        let x = (col + GRID_MIN) as f32 * cube_size;
+        Vec3::new(x, foot_y, z)
+    })
+}
+
+pub fn torch_flame_positions(ground_y: f32, cube_size: f32) -> [Vec3; 2] {
+    torch_foot_positions(ground_y, cube_size).map(|foot| {
+        Vec3::new(
+            foot.x,
+            foot.y + (TORCH_POLE_HEIGHT + TORCH_FLAME_SIZE / 2.0) * cube_size,
+            foot.z,
+        )
+    })
+}
+
+fn add_torch(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, foot: Vec3, cube_size: f32) {
+    let pole_height = TORCH_POLE_HEIGHT * cube_size;
+    let mut pole = Cube::new_box(
+        Vec3::new(foot.x, foot.y + pole_height / 2.0, foot.z),
+        Vec3::new(0.15 * cube_size, pole_height, 0.15 * cube_size),
+        0.15 * cube_size,
+        materials.log_side.clone(),
+    );
+    pole.top = materials.log_top.clone();
+    pole.bottom = materials.log_top.clone();
+    objects.push(Box::new(pole));
+
+    let mut flame_material = Material::new(Color::new(255, 120, 30), 20.0, [0.7, 0.3, 0.0]);
+    flame_material.emission = Color::new(255, 140, 40);
+
+    let flame_size = TORCH_FLAME_SIZE * cube_size;
+    let mut flame = Cube::new_box(
+        Vec3::new(foot.x, foot.y + pole_height + flame_size / 2.0, foot.z),
+        Vec3::new(flame_size, flame_size, flame_size),
+        flame_size,
+        flame_material,
+    );
+    flame.casts_shadow = false;
+    objects.push(Box::new(flame));
 }
 
 /// Fila/columna (0-indexado) del piso del santuario 
@@ -186,5 +235,9 @@ pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, gr
 
             col = end;
         }
+    }
+
+    for foot in torch_foot_positions(ground_y, cube_size) {
+        add_torch(objects, materials, foot, cube_size);
     }
 }

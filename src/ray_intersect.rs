@@ -11,6 +11,7 @@ pub struct Material {
     pub transparency: f32,
     pub refractive_index: f32,
     pub texture: Option<Arc<Texture>>,
+    pub emission: Color,
 }
 
 impl Material {
@@ -22,6 +23,7 @@ impl Material {
             transparency: 0.0,
             refractive_index: 1.0,
             texture: None,
+            emission: Color::new(0, 0, 0),
         }
     }
 
@@ -39,6 +41,7 @@ impl Material {
             transparency,
             refractive_index,
             texture: None,
+            emission: Color::new(0, 0, 0),
         }
     }
 
@@ -50,6 +53,7 @@ impl Material {
             transparency: 0.0,
             refractive_index: 1.0,
             texture: Some(texture),
+            emission: Color::new(0, 0, 0),
         }
     }
 
@@ -67,6 +71,7 @@ impl Material {
             transparency,
             refractive_index,
             texture: Some(texture),
+            emission: Color::new(0, 0, 0),
         }
     }
 
