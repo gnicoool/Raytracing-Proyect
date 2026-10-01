@@ -598,6 +598,7 @@ fn main() {
             (Key::I, ScenicView::LagoAtitlan),
             (Key::O, ScenicView::AntiguaGuatemala),
             (Key::P, ScenicView::TikalPeten),
+            (Key::M, ScenicView::GuatemalaMap),
         ];
 
         for (key, new_view) in view_keys {
