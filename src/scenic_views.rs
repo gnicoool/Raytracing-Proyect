@@ -217,18 +217,19 @@ fn build_flat_grid(
                 for c in col..end {
                     let x = (c + VIEW_GRID_MIN) as f32 * cube_size;
 
-                    if ch == 'G' || ch == 'L' {
-                        const SNOW_HEIGHT: f32 = 0.08;
-                        if let Some(variant) = pick_ground_snow(&materials.snow_toppers) {
-                            let mut snow_cube = Cube::new_box(
-                                Vec3::new(x, top_y + SNOW_HEIGHT / 2.0, z),
-                                Vec3::new(cube_size, SNOW_HEIGHT, cube_size),
-                                cube_size,
-                                variant.material.clone(),
-                            );
-                            snow_cube.casts_shadow = variant.casts_shadow;
-                            objects.push(Box::new(snow_cube));
-                        }
+                    // Nieve en todas las celdas de tierra firme (igual que en el
+                    // diorama principal), no solo en pasto/selva: piedra, hierro,
+                    // madera, etc. también se cubren en Invierno.
+                    const SNOW_HEIGHT: f32 = 0.08;
+                    if let Some(variant) = pick_ground_snow(&materials.snow_toppers) {
+                        let mut snow_cube = Cube::new_box(
+                            Vec3::new(x, top_y + SNOW_HEIGHT / 2.0, z),
+                            Vec3::new(cube_size, SNOW_HEIGHT, cube_size),
+                            cube_size,
+                            variant.material.clone(),
+                        );
+                        snow_cube.casts_shadow = variant.casts_shadow;
+                        objects.push(Box::new(snow_cube));
                     }
 
                     if ch == 'G' {
@@ -262,6 +263,39 @@ fn build_flat_grid(
 
             col = end;
         }
+    }
+}
+
+/// Capa fina de nieve (si la estación es Invierno) sobre la cara superior de
+/// una caja ancha: recorre su ancho en pasos de 1 celda y hace una elección
+/// de parche independiente por celda (igual que `build_flat_grid`), así se
+/// ve repartida en vez de una sola placa uniforme. Se usa para las
+/// estructuras especiales (volcanes, pirámide, arco, muelles...) que no
+/// pasan por el loop de celdas de `build_flat_grid`.
+fn add_snow_cover(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    materials: &Materials,
+    x_min: f32,
+    x_max: f32,
+    top_y: f32,
+    z_center: f32,
+    depth: f32,
+    cube_size: f32,
+) {
+    const SNOW_HEIGHT: f32 = 0.08;
+    let mut x = x_min + cube_size / 2.0;
+    while x < x_max {
+        if let Some(variant) = pick_ground_snow(&materials.snow_toppers) {
+            let mut snow_cube = Cube::new_box(
+                Vec3::new(x, top_y + SNOW_HEIGHT / 2.0, z_center),
+                Vec3::new(cube_size, SNOW_HEIGHT, depth),
+                cube_size,
+                variant.material.clone(),
+            );
+            snow_cube.casts_shadow = variant.casts_shadow;
+            objects.push(Box::new(snow_cube));
+        }
+        x += cube_size;
     }
 }
 
@@ -337,6 +371,7 @@ fn build_volcano(
             cube_size * BLOCK_TILE,
             material,
         )));
+        add_snow_cover(objects, materials, x_min, x_max, center_y + height / 2.0, z_center, depth, cube_size);
 
         level_top += height;
     }
@@ -382,6 +417,11 @@ fn build_dock(
     deck.top = materials.log_top.clone();
     deck.bottom = materials.log_top.clone();
     objects.push(Box::new(deck));
+    add_snow_cover(
+        objects, materials,
+        x_center - width * cube_size / 2.0, x_center + width * cube_size / 2.0,
+        deck_y + DECK_THICKNESS * cube_size / 2.0, z_center, depth * cube_size, cube_size,
+    );
 
     let post_bottom = ground_y - 1.4 * cube_size;
     let post_top = deck_y + 0.3 * cube_size;
@@ -432,6 +472,11 @@ fn build_atitlan_raft(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Mate
     deck.top = materials.log_top.clone();
     deck.bottom = materials.log_top.clone();
     objects.push(Box::new(deck));
+    add_snow_cover(
+        objects, materials,
+        x_center - cube_size, x_center + cube_size,
+        deck_y + DECK_THICKNESS * cube_size / 2.0, z_center, 2.0 * cube_size, cube_size,
+    );
 
     const POLE_HEIGHT: f32 = 0.5;
     const POLE_WIDTH: f32 = 0.12;
@@ -497,6 +542,10 @@ fn build_santa_catalina_arch(objects: &mut Vec<Box<dyn RayIntersect>>, materials
     let pillar_height = PILLAR_HEIGHT * cube_size;
     let pillar_center_y = ground_top + pillar_height / 2.0;
 
+    let pillar_top = ground_top + pillar_height;
+
+    // Los topes de las columnas quedan tapados por el dintel que se
+    // construye encima, así que ahí no hace falta nieve (no sería visible).
     for &col in &[LEFT_COL, RIGHT_COL] {
         let x = (col + VIEW_GRID_MIN) as f32 * cube_size;
         objects.push(Box::new(Cube::new_box(
@@ -506,8 +555,6 @@ fn build_santa_catalina_arch(objects: &mut Vec<Box<dyn RayIntersect>>, materials
             brick.clone(),
         )));
     }
-
-    let pillar_top = ground_top + pillar_height;
     let beam_height = BEAM_HEIGHT * cube_size;
     let beam_width = (RIGHT_COL - LEFT_COL + 1) as f32;
     let beam_x_center = (LEFT_COL + VIEW_GRID_MIN) as f32 * cube_size + (beam_width - 1.0) * cube_size / 2.0;
@@ -533,6 +580,11 @@ fn build_santa_catalina_arch(objects: &mut Vec<Box<dyn RayIntersect>>, materials
         cube_size * BLOCK_TILE,
         cornice_white,
     )));
+    add_snow_cover(
+        objects, materials,
+        tower_x - 2.0 * cube_size, tower_x + 2.0 * cube_size,
+        wall_top + CORNICE_HEIGHT * cube_size, tower_z, 2.0 * cube_size, cube_size,
+    );
 
     let level1_bottom = wall_top + CORNICE_HEIGHT * cube_size;
     let level1_height = 1.3 * cube_size;
@@ -617,6 +669,11 @@ fn build_ground_patch(
     land.top = materials.grass_top.clone();
     land.bottom = materials.dirt.clone();
     objects.push(Box::new(land));
+    add_snow_cover(
+        objects, materials,
+        x_center - width * cube_size / 2.0, x_center + width * cube_size / 2.0,
+        ground_y + 0.5 * cube_size, z_center, depth * cube_size, cube_size,
+    );
 }
 
 /// El volcán al fondo de la calle 
@@ -707,6 +764,11 @@ fn build_tikal_pyramid(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Mat
             cube_size * BLOCK_TILE,
             light_stone(body_tint),
         )));
+        add_snow_cover(
+            objects, materials,
+            center_x - half_w * cube_size, center_x + half_w * cube_size,
+            center_y + height / 2.0, center_z, half_d * 2.0 * cube_size, cube_size,
+        );
 
         // Escalón de la gran escalinata frontal (cara sur), en piedra clara
         // para que resalte contra el cuerpo de la pirámide.
@@ -731,6 +793,11 @@ fn build_tikal_pyramid(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Mat
         cube_size * BLOCK_TILE,
         light_stone(Color::new(222, 222, 216)),
     )));
+    add_snow_cover(
+        objects, materials,
+        center_x - TEMPLE_HALF * cube_size, center_x + TEMPLE_HALF * cube_size,
+        level_top + temple_height, center_z, TEMPLE_HALF * 2.0 * cube_size, cube_size,
+    );
 
     const DOOR_HALF_WIDTH: f32 = 0.35;
     const DOOR_HEIGHT: f32 = 0.7;
