@@ -11,6 +11,7 @@ mod sanctuary;
 mod vegetation;
 mod snow;
 mod fireflies;
+mod scenic_views;
 
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{dot, normalize, Vec3};
@@ -23,6 +24,7 @@ use crate::framebuffer::Framebuffer;
 use crate::light::Light;
 use crate::materials::{Materials, Season};
 use crate::ray_intersect::{Intersect, RayIntersect};
+use crate::scenic_views::ScenicView;
 use crate::texture::Texture;
 
 const WIDTH: usize = 800;
@@ -425,6 +427,58 @@ fn build_scene(season: Season, night: bool) -> (Materials, Vec<Box<dyn RayInters
     (materials, objects, fireflies_lights)
 }
 
+/// Si `view` es `Some`, construye una de las 3 vistas aéreas 20x20 (I/O/P) en
+/// vez del diorama principal del santuario. Mismo manejo de estaciones/noche.
+fn build_view_scene(
+    view: Option<ScenicView>,
+    season: Season,
+    night: bool,
+) -> (Materials, Vec<Box<dyn RayIntersect>>, Vec<Light>) {
+    let Some(scenic) = view else {
+        return build_scene(season, night);
+    };
+
+    let materials = Materials::load(season);
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+
+    scenic_views::build(&mut objects, &materials, scenic, GROUND_Y, CUBE_SIZE);
+
+    let lights = if night {
+        let (grid_min, grid_max) = scenic_views::grid_bounds();
+        let positions = fireflies::positions(grid_min, grid_max, GROUND_Y, FIREFLY_COUNT);
+        let mut fireflies_lights = Vec::new();
+        fireflies::build(&mut objects, &mut fireflies_lights, &positions);
+        fireflies_lights
+    } else {
+        vec![sun_light()]
+    };
+
+    (materials, objects, lights)
+}
+
+/// Cámara aérea inicial para la vista actual: el diorama principal usa su
+/// posición original, cada vista nueva apunta a su propio centro de cuadrícula.
+fn camera_for_view(view: Option<ScenicView>) -> Camera {
+    match view {
+        None => {
+            let (sanctuary_x, sanctuary_z) = terrain::sanctuary_center();
+            Camera::new(
+                Vec3::new(0.0, 12.0, 23.0),
+                Vec3::new(sanctuary_x, 0.0, sanctuary_z),
+                Vec3::new(0.0, 1.0, 0.0),
+            )
+        }
+        Some(_) => {
+            let (cx, cz) = scenic_views::view_center();
+            Camera::new(
+                Vec3::new(cx, 24.0, cz + 7.0),
+                Vec3::new(cx, 0.0, cz),
+                Vec3::new(0.0, 1.0, 0.0),
+            )
+        }
+    }
+}
+
 fn season_name(season: Season) -> &'static str {
     match season {
         Season::Spring => "Primavera",
@@ -434,11 +488,16 @@ fn season_name(season: Season) -> &'static str {
     }
 }
 
-fn window_title(season: Season, night: bool) -> String {
+fn window_title(view: Option<ScenicView>, season: Season, night: bool) -> String {
+    let place = match view {
+        None => season_name(season).to_string(),
+        Some(scenic) => scenic_views::name(scenic).to_string(),
+    };
+
     if night {
-        format!("gnicoool - {} (Noche)", season_name(season))
+        format!("gnicoool - {} (Noche)", place)
     } else {
-        format!("gnicoool - {}", season_name(season))
+        format!("gnicoool - {}", place)
     }
 }
 
@@ -466,21 +525,17 @@ fn main() {
 
     let mut season = Season::Summer;
     let mut night = false;
+    let mut current_view: Option<ScenicView> = None;
     let (_materials, mut objects, firefly_lights) = build_scene(season, night);
     let mut lights: Vec<Light> = if night { firefly_lights } else { vec![sun_light()] };
-    window.set_title(&window_title(season, night));
+    window.set_title(&window_title(current_view, season, night));
 
     let mut snowflakes = snow::new_flakes(200, WIDTH, HEIGHT);
     let mut last_frame = Instant::now();
     let mut last_flicker = Instant::now();
     const FLICKER_INTERVAL: Duration = Duration::from_secs(4);
 
-    let (sanctuary_x, sanctuary_z) = terrain::sanctuary_center();
-    let mut camera = Camera::new(
-        Vec3::new(0.0, 12.0, 23.0),
-        Vec3::new(sanctuary_x, 0.0, sanctuary_z),
-        Vec3::new(0.0, 1.0, 0.0),
-    );
+    let mut camera = camera_for_view(current_view);
 
     // Mientras se orbita/hace zoom se renderiza en baja resolución (bloques de
     // DRAFT_PIXEL_SCALE px) para mantenerlo fluido; al soltar la tecla se hace
@@ -518,22 +573,53 @@ fn main() {
         for (key, new_season) in season_keys {
             if window.is_key_pressed(key, minifb::KeyRepeat::No) && new_season != season {
                 season = new_season;
-                let (new_materials, new_objects, new_fireflies) = build_scene(season, night);
+                let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
                 objects = new_objects;
                 drop(new_materials);
-                lights = if night { new_fireflies } else { vec![sun_light()] };
-                window.set_title(&window_title(season, night));
+                lights = new_lights;
+                window.set_title(&window_title(current_view, season, night));
                 needs_sharp_render = true;
             }
         }
 
         if window.is_key_pressed(Key::N, minifb::KeyRepeat::No) {
             night = !night;
-            let (new_materials, new_objects, new_fireflies) = build_scene(season, night);
+            let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
             objects = new_objects;
             drop(new_materials);
-            lights = if night { new_fireflies } else { vec![sun_light()] };
-            window.set_title(&window_title(season, night));
+            lights = new_lights;
+            window.set_title(&window_title(current_view, season, night));
+            needs_sharp_render = true;
+        }
+
+        let view_keys = [
+            (Key::I, ScenicView::LagoAtitlan),
+            (Key::O, ScenicView::AntiguaGuatemala),
+            (Key::P, ScenicView::TikalPeten),
+        ];
+
+        for (key, new_view) in view_keys {
+            if window.is_key_pressed(key, minifb::KeyRepeat::No) && current_view != Some(new_view) {
+                current_view = Some(new_view);
+                let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
+                objects = new_objects;
+                drop(new_materials);
+                lights = new_lights;
+                camera = camera_for_view(current_view);
+                window.set_title(&window_title(current_view, season, night));
+                needs_sharp_render = true;
+            }
+        }
+
+        // Tecla 0: vuelve al diorama principal del santuario.
+        if window.is_key_pressed(Key::Key0, minifb::KeyRepeat::No) && current_view.is_some() {
+            current_view = None;
+            let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
+            objects = new_objects;
+            drop(new_materials);
+            lights = new_lights;
+            camera = camera_for_view(current_view);
+            window.set_title(&window_title(current_view, season, night));
             needs_sharp_render = true;
         }
 
