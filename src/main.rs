@@ -435,7 +435,9 @@ fn build_view_scene(
     night: bool,
 ) -> (Materials, Vec<Box<dyn RayIntersect>>, Vec<Light>) {
     let Some(scenic) = view else {
-        return build_scene(season, night);
+        let (materials, objects, firefly_lights) = build_scene(season, night);
+        let lights = if night { firefly_lights } else { vec![sun_light()] };
+        return (materials, objects, lights);
     };
 
     let materials = Materials::load(season);
