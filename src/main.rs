@@ -668,6 +668,24 @@ fn main() {
             }
         }
 
+        // En el Mapa de Guatemala, chocar la cámara contra uno de los lugares
+        // lleva directo a esa vista. Reutiliza el mismo `Cube::contains_point` como las colisiones sin medir coordenaas
+        if current_view == Some(ScenicView::GuatemalaMap) {
+            for (target, hitbox) in scenic_views::guatemala_marker_hitboxes(GROUND_Y, CUBE_SIZE) {
+                if hitbox.contains_point(&camera.eye) {
+                    current_view = Some(target);
+                    let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
+                    objects = new_objects;
+                    drop(new_materials);
+                    lights = new_lights;
+                    camera = camera_for_view(current_view);
+                    window.set_title(&window_title(current_view, season, night));
+                    needs_sharp_render = true;
+                    break;
+                }
+            }
+        }
+
         if night && last_flicker.elapsed() >= FLICKER_INTERVAL {
             fireflies::flicker(&mut lights);
             last_flicker = Instant::now();
