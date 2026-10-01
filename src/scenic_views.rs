@@ -1,6 +1,7 @@
 use crate::cube::Cube;
 use crate::materials::{pick_ground_snow, pick_sparse, Materials};
 use crate::ray_intersect::{Material, RayIntersect};
+use crate::vegetation;
 use nalgebra_glm::Vec3;
 
 // Vistas aéreas adicionales (ver vistas.md), activadas con las teclas I/O/P.
@@ -28,16 +29,16 @@ const LAGO_ATITLAN: [&str; VIEW_GRID_SIZE] = [
     "GTTTWWWWWWWWWWWWTTGG", // Fila 6: Lago abierto
     "GGWWWWWWWWWWWWWWWWGG", // Fila 7: Agua profunda
     "GGWWWWWWWWWWWWWWWWGG", // Fila 8: Agua profunda
-    "GGWWWWWWMMWWWWWWWWGG", // Fila 9: Balsa de madera en el centro
-    "GGWWWWWWMMWWWWWWWWGG", // Fila 10: Balsa de madera en el centro
+    "GGWWWWWWWWWWWWWWWWGG", // Fila 9: Agua (la balsa flota encima, ver build_atitlan_raft)
+    "GGWWWWWWWWWWWWWWWWGG", // Fila 10: Agua (la balsa flota encima, ver build_atitlan_raft)
     "GGWWWWWWWWWWWWWWWWGG", // Fila 11: Agua profunda
     "GGWWWWWWWWWWWWWWWWGG", // Fila 12: Agua profunda
-    "GGMMMWWWWWWWWWWWMMMG", // Fila 13: Muelles de madera a los costados
-    "GGMMMWWWWWWWWWWWMMMG", // Fila 14: Muelles internándose en el agua
+    "GGWWWWWWWWWWWWWWWWWG", // Fila 13: Agua (los muelles flotan encima, ver build_atitlan_docks)
+    "GGWWWWWWWWWWWWWWWWWG", // Fila 14: Agua (los muelles flotan encima, ver build_atitlan_docks)
     "GTTTWWWWWWWWWWWWTTGG", // Fila 15: Orilla sur
     "GTTTGGGGGGGGGGGGTTGG", // Fila 16: Tierra de la costa
-    "GGGLLGGGGGGGGGGLLGGG", // Fila 17: Árboles a las orillas
-    "GGGLLGGGGGGGGGGLLGGG", // Fila 18: Follaje de árboles
+    "GGGGGGGGGGGGGGGGGGGG", // Fila 17: Pasto (los árboles reales se agregan en build_atitlan_trees)
+    "GGGGGGGGGGGGGGGGGGGG", // Fila 18: Pasto (los árboles reales se agregan en build_atitlan_trees)
     "GGGGGGGGGGGGGGGGGGGG", // Fila 19: Borde frontal del diorama
 ];
 
@@ -115,7 +116,13 @@ pub fn view_center() -> (f32, f32) {
 
 pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, view: ScenicView, ground_y: f32, cube_size: f32) {
     match view {
-        ScenicView::LagoAtitlan => build_flat_grid(objects, materials, &LAGO_ATITLAN, ground_y, cube_size),
+        ScenicView::LagoAtitlan => {
+            build_flat_grid(objects, materials, &LAGO_ATITLAN, ground_y, cube_size);
+            build_atitlan_volcanoes(objects, materials, ground_y, cube_size);
+            build_atitlan_docks(objects, materials, ground_y, cube_size);
+            build_atitlan_raft(objects, materials, ground_y, cube_size);
+            build_atitlan_trees(objects, materials, ground_y, cube_size);
+        }
         ScenicView::AntiguaGuatemala => {
             build_flat_grid(objects, materials, &ANTIGUA_GUATEMALA, ground_y, cube_size);
             build_santa_catalina_arch(objects, materials, ground_y, cube_size);
@@ -252,6 +259,218 @@ fn build_flat_grid(
             col = end;
         }
     }
+}
+
+/// Los dos volcanes al fondo (San Pedro a la izquierda, Atitlán a la derecha):
+/// muchas terrazas delgadas apiladas sobre el footprint de piedra ya
+/// construido por `build_flat_grid` (filas 0-3), angostándose hacia una
+/// cumbre puntiaguda rematada en hierro brilloso.
+fn build_atitlan_volcanoes(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, ground_y: f32, cube_size: f32) {
+    let center_z = (1 + VIEW_GRID_MIN) as f32 * cube_size;
+    let left_center_x = (2 + VIEW_GRID_MIN) as f32 * cube_size + 0.5 * cube_size;
+    let right_center_x = (16 + VIEW_GRID_MIN) as f32 * cube_size + 0.5 * cube_size;
+
+    // merge_dir indica hacia qué lado se estira la base de cada volcán para
+    // que ambos se unan un poco en la "silla" entre las dos cumbres.
+    build_volcano(objects, materials, ground_y, cube_size, left_center_x, center_z, 1.0);
+    build_volcano(objects, materials, ground_y, cube_size, right_center_x, center_z, -1.0);
+}
+
+/// Construye un volcán cónico a partir de muchos niveles delgados que se
+/// angostan hacia la cumbre. Usar más niveles (en vez de pocas terrazas
+/// grandes) y un `tile_size` más chico da la ilusión de muchos bloques
+/// pequeños formando el cono, sin disparar la cantidad de objetos de la escena.
+fn build_volcano(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    materials: &Materials,
+    ground_y: f32,
+    cube_size: f32,
+    center_x: f32,
+    center_z: f32,
+    merge_dir: f32,
+) {
+    const LEVELS: usize = 12;
+    const BASE_HALF_WIDTH: f32 = 4.5;
+    const PEAK_HALF_WIDTH: f32 = 0.45;
+    const BACK_HALF_DEPTH: f32 = 2.0;
+    const FRONT_HALF_DEPTH_BASE: f32 = 3.3;
+    const PEAK_HALF_DEPTH: f32 = 0.45;
+    const MERGE_SHIFT: f32 = 3.5;
+    const LEVEL_HEIGHT: f32 = 0.55;
+    const CAP_HEIGHT: f32 = 0.6;
+    const STONE_FROM: f32 = 0.6;
+    const BLOCK_TILE: f32 = 0.5;
+
+    let mut level_top = ground_y + 0.5 * cube_size;
+
+    for i in 0..LEVELS {
+        let t = i as f32 / (LEVELS - 1) as f32;
+        let half_w = BASE_HALF_WIDTH + (PEAK_HALF_WIDTH - BASE_HALF_WIDTH) * t;
+        let back_half_d = BACK_HALF_DEPTH + (PEAK_HALF_DEPTH - BACK_HALF_DEPTH) * t;
+        let front_half_d = FRONT_HALF_DEPTH_BASE + (PEAK_HALF_DEPTH - FRONT_HALF_DEPTH_BASE) * t;
+        let shift = (MERGE_SHIFT * (1.0 - t)).max(0.0);
+
+        let (x_min, x_max) = if merge_dir > 0.0 {
+            (center_x - half_w, center_x + half_w + shift)
+        } else {
+            (center_x - half_w - shift, center_x + half_w)
+        };
+
+        let width = x_max - x_min;
+        let x_center = (x_min + x_max) / 2.0;
+
+        let z_min = center_z - back_half_d * cube_size;
+        let z_max = center_z + front_half_d * cube_size;
+        let depth = z_max - z_min;
+        let z_center = (z_min + z_max) / 2.0;
+
+        let height = LEVEL_HEIGHT * cube_size;
+        let center_y = level_top + height / 2.0;
+        let material = if t < STONE_FROM { materials.dirt.clone() } else { materials.stone.clone() };
+
+        objects.push(Box::new(Cube::new_box(
+            Vec3::new(x_center, center_y, z_center),
+            Vec3::new(width * cube_size, height, depth),
+            cube_size * BLOCK_TILE,
+            material,
+        )));
+
+        level_top += height;
+    }
+
+    let cap_height = CAP_HEIGHT * cube_size;
+    objects.push(Box::new(Cube::new_box(
+        Vec3::new(center_x, level_top + cap_height / 2.0, center_z),
+        Vec3::new(PEAK_HALF_WIDTH * 2.0 * cube_size, cap_height, PEAK_HALF_DEPTH * 2.0 * cube_size),
+        cube_size * BLOCK_TILE,
+        materials.iron_mirror.clone(),
+    )));
+}
+
+/// muelle de madera
+fn build_dock(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    materials: &Materials,
+    ground_y: f32,
+    cube_size: f32,
+    col_start: i32,
+    col_end: i32,
+    row_start: i32,
+    row_end: i32,
+) {
+    const DECK_THICKNESS: f32 = 0.2;
+    const DECK_CLEARANCE: f32 = 0.4;
+    const POST_WIDTH: f32 = 0.15;
+
+    let water_top = ground_y - 0.5 * cube_size;
+    let deck_y = water_top + DECK_CLEARANCE * cube_size;
+
+    let width = (col_end - col_start + 1) as f32;
+    let depth = (row_end - row_start + 1) as f32;
+    let x_center = (col_start + VIEW_GRID_MIN) as f32 * cube_size + (width - 1.0) * cube_size / 2.0;
+    let z_center = (row_start + VIEW_GRID_MIN) as f32 * cube_size + (depth - 1.0) * cube_size / 2.0;
+
+    let mut deck = Cube::new_box(
+        Vec3::new(x_center, deck_y, z_center),
+        Vec3::new(width * cube_size, DECK_THICKNESS * cube_size, depth * cube_size),
+        cube_size,
+        materials.log_side.clone(),
+    );
+    deck.top = materials.log_top.clone();
+    deck.bottom = materials.log_top.clone();
+    objects.push(Box::new(deck));
+
+    let post_bottom = ground_y - 1.4 * cube_size;
+    let post_top = deck_y + 0.3 * cube_size;
+    let post_height = post_top - post_bottom;
+    let post_center_y = post_bottom + post_height / 2.0;
+
+    for col in col_start..=col_end {
+        let x = (col + VIEW_GRID_MIN) as f32 * cube_size;
+        for row in row_start..=row_end {
+            let z = (row + VIEW_GRID_MIN) as f32 * cube_size;
+            let mut post = Cube::new_box(
+                Vec3::new(x, post_center_y, z),
+                Vec3::new(POST_WIDTH * cube_size, post_height, POST_WIDTH * cube_size),
+                POST_WIDTH * cube_size,
+                materials.log_side.clone(),
+            );
+            post.top = materials.log_top.clone();
+            post.bottom = materials.log_top.clone();
+            objects.push(Box::new(post));
+        }
+    }
+}
+
+/// Los dos muelles de madera que salen de cada orilla hacia el lago.
+fn build_atitlan_docks(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, ground_y: f32, cube_size: f32) {
+    build_dock(objects, materials, ground_y, cube_size, 2, 4, 13, 14);
+    build_dock(objects, materials, ground_y, cube_size, 16, 18, 13, 14);
+}
+
+/// La balsa de madera 2x2 en el centro exacto del lago, con un remo/amarra
+/// vertical en una de sus esquinas.
+fn build_atitlan_raft(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, ground_y: f32, cube_size: f32) {
+    const DECK_THICKNESS: f32 = 0.2;
+    const DECK_CLEARANCE: f32 = 0.35;
+
+    let water_top = ground_y - 0.5 * cube_size;
+    let deck_y = water_top + DECK_CLEARANCE * cube_size;
+
+    let x_center = (8 + VIEW_GRID_MIN) as f32 * cube_size + 0.5 * cube_size;
+    let z_center = (9 + VIEW_GRID_MIN) as f32 * cube_size + 0.5 * cube_size;
+
+    let mut deck = Cube::new_box(
+        Vec3::new(x_center, deck_y, z_center),
+        Vec3::new(2.0 * cube_size, DECK_THICKNESS * cube_size, 2.0 * cube_size),
+        cube_size,
+        materials.log_side.clone(),
+    );
+    deck.top = materials.log_top.clone();
+    deck.bottom = materials.log_top.clone();
+    objects.push(Box::new(deck));
+
+    const POLE_HEIGHT: f32 = 0.5;
+    const POLE_WIDTH: f32 = 0.12;
+    let pole_x = (9 + VIEW_GRID_MIN) as f32 * cube_size;
+    let pole_z = (10 + VIEW_GRID_MIN) as f32 * cube_size;
+    let pole_height = POLE_HEIGHT * cube_size;
+
+    let mut pole = Cube::new_box(
+        Vec3::new(pole_x, deck_y + pole_height / 2.0, pole_z),
+        Vec3::new(POLE_WIDTH * cube_size, pole_height, POLE_WIDTH * cube_size),
+        POLE_WIDTH * cube_size,
+        materials.log_side.clone(),
+    );
+    pole.top = materials.log_top.clone();
+    pole.bottom = materials.log_top.clone();
+    objects.push(Box::new(pole));
+}
+
+/// Árboles reales (tronco + copa en capas) en vez del follaje plano, en los
+/// 2 grupos a cada orilla del lago.
+fn build_atitlan_trees(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, ground_y: f32, cube_size: f32) {
+    let snow = materials.snow_toppers.as_slice();
+    let apple = materials.apple.as_ref();
+
+    let coord = |c: i32| (c + VIEW_GRID_MIN) as f32 * cube_size;
+
+    vegetation::add_big_tree(
+        objects, coord(3), coord(17), ground_y, cube_size,
+        &materials.log_side, &materials.log_top, &materials.leaves, snow, apple,
+    );
+    vegetation::add_small_tree(
+        objects, coord(4), coord(18), ground_y, cube_size,
+        &materials.log_side, &materials.log_top, &materials.leaves, snow, apple,
+    );
+    vegetation::add_small_tree(
+        objects, coord(15), coord(17), ground_y, cube_size,
+        &materials.log_side, &materials.log_top, &materials.leaves, snow, apple,
+    );
+    vegetation::add_big_tree(
+        objects, coord(16), coord(18), ground_y, cube_size,
+        &materials.log_side, &materials.log_top, &materials.leaves, snow, apple,
+    );
 }
 
 /// Material del Arco de Santa Catalina según su posición dentro del bloque
