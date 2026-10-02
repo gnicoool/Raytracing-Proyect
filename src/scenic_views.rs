@@ -57,6 +57,61 @@ pub fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, vi
     }
 }
 
+/// Posiciones (apagadas de día) de las llamas de las antorchas de la vista
+/// actual, para que `main.rs` agregue una `Light` en cada una solo de noche
+/// (la geometría de la antorcha, en cambio, siempre se construye en `build`).
+pub fn torch_flame_positions(view: ScenicView, ground_y: f32, cube_size: f32) -> Vec<Vec3> {
+    match view {
+        ScenicView::LagoAtitlan => atitlan::torch_flame_positions(ground_y, cube_size),
+        ScenicView::AntiguaGuatemala => antigua::torch_flame_positions(ground_y, cube_size),
+        ScenicView::TikalPeten => tikal::torch_flame_positions(ground_y, cube_size),
+        ScenicView::GuatemalaMap => guatemala_map::torch_flame_positions(ground_y, cube_size),
+    }
+}
+
+const TORCH_POLE_HEIGHT: f32 = 0.7;
+const TORCH_FLAME_SIZE: f32 = 0.28;
+
+/// Posición de la llama (centro) dado el pie de una antorcha, sin construir
+/// geometría: usado tanto por `build_torch` como por cada `torch_flame_positions`
+/// de vista, para que ambos coincidan exactamente.
+fn torch_flame_position(foot: Vec3, cube_size: f32) -> Vec3 {
+    Vec3::new(
+        foot.x,
+        foot.y + (TORCH_POLE_HEIGHT + TORCH_FLAME_SIZE / 2.0) * cube_size,
+        foot.z,
+    )
+}
+
+/// Antorcha reutilizable (poste de madera + llama con emission) para marcar
+/// las estructuras de cada vista aérea cuando es de noche. Misma geometría
+/// que las antorchas del muelle del diorama principal (ver `terrain.rs`).
+fn build_torch(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, foot: Vec3, cube_size: f32) {
+    let pole_height = TORCH_POLE_HEIGHT * cube_size;
+    let mut pole = Cube::new_box(
+        Vec3::new(foot.x, foot.y + pole_height / 2.0, foot.z),
+        Vec3::new(0.15 * cube_size, pole_height, 0.15 * cube_size),
+        0.15 * cube_size,
+        materials.log_side.clone(),
+    );
+    pole.top = materials.log_top.clone();
+    pole.bottom = materials.log_top.clone();
+    objects.push(Box::new(pole));
+
+    let mut flame_material = Material::new(Color::new(255, 120, 30), 20.0, [0.7, 0.3, 0.0]);
+    flame_material.emission = Color::new(255, 140, 40);
+
+    let flame_size = TORCH_FLAME_SIZE * cube_size;
+    let mut flame = Cube::new_box(
+        torch_flame_position(foot, cube_size),
+        Vec3::new(flame_size, flame_size, flame_size),
+        flame_size,
+        flame_material,
+    );
+    flame.casts_shadow = false;
+    objects.push(Box::new(flame));
+}
+
 /// Construye el piso base 20x20 a partir del mapa de caracteres: el agua (W)
 /// queda un bloque más abajo que el resto, igual que en el diorama principal,
 /// creando el borde/orilla visible entre tierra y lago.

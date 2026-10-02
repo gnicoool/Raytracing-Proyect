@@ -1,4 +1,7 @@
-use super::{add_snow_cover, build_flag_marker, build_flat_grid, build_volcano, VIEW_GRID_MIN, VIEW_GRID_SIZE};
+use super::{
+    add_snow_cover, build_flag_marker, build_flat_grid, build_torch, build_volcano,
+    torch_flame_position, VIEW_GRID_MIN, VIEW_GRID_SIZE,
+};
 use crate::cube::Cube;
 use crate::materials::Materials;
 use crate::ray_intersect::RayIntersect;
@@ -35,7 +38,28 @@ pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materi
     build_atitlan_docks(objects, materials, ground_y, cube_size);
     build_atitlan_raft(objects, materials, ground_y, cube_size);
     build_atitlan_trees(objects, materials, ground_y, cube_size);
+    for foot in torch_foot_positions(ground_y, cube_size) {
+        build_torch(objects, materials, foot, cube_size);
+    }
     build_flag_marker(objects, ground_y, cube_size);
+}
+
+/// Pie de las antorchas que flanquean la entrada de cada muelle, en tierra
+/// firme junto a la orilla, para iluminar los muelles y la balsa de noche.
+fn torch_foot_positions(ground_y: f32, cube_size: f32) -> [Vec3; 2] {
+    let coord = |c: i32| (c + VIEW_GRID_MIN) as f32 * cube_size;
+    let foot_y = ground_y + 0.5 * cube_size;
+    [
+        Vec3::new(coord(3), foot_y, coord(16)),
+        Vec3::new(coord(16), foot_y, coord(16)),
+    ]
+}
+
+pub(super) fn torch_flame_positions(ground_y: f32, cube_size: f32) -> Vec<Vec3> {
+    torch_foot_positions(ground_y, cube_size)
+        .into_iter()
+        .map(|foot| torch_flame_position(foot, cube_size))
+        .collect()
 }
 
 /// Los dos volcanes al fondo

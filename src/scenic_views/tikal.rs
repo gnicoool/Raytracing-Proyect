@@ -1,4 +1,7 @@
-use super::{add_snow_cover, build_flag_marker, build_flat_grid, VIEW_GRID_MIN, VIEW_GRID_SIZE};
+use super::{
+    add_snow_cover, build_flag_marker, build_flat_grid, build_torch, torch_flame_position,
+    VIEW_GRID_MIN, VIEW_GRID_SIZE,
+};
 use crate::color::Color;
 use crate::cube::Cube;
 use crate::materials::Materials;
@@ -37,7 +40,29 @@ pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materi
     build_flat_grid(objects, materials, &TIKAL_PETEN, ground_y, cube_size);
     build_tikal_pyramid(objects, materials, ground_y, cube_size);
     build_tikal_trees(objects, materials, ground_y, cube_size);
+    for foot in torch_foot_positions(ground_y, cube_size) {
+        build_torch(objects, materials, foot, cube_size);
+    }
     build_flag_marker(objects, ground_y, cube_size);
+}
+
+/// Pie de las antorchas que flanquean la base de la gran escalinata, sobre
+/// la plaza de tierra, para iluminar la pirámide de noche.
+fn torch_foot_positions(ground_y: f32, cube_size: f32) -> [Vec3; 2] {
+    let coord = |c: i32| (c + VIEW_GRID_MIN) as f32 * cube_size;
+    let foot_y = ground_y + 0.5 * cube_size;
+    let z = coord(13);
+    [
+        Vec3::new(coord(7), foot_y, z),
+        Vec3::new(coord(12), foot_y, z),
+    ]
+}
+
+pub(super) fn torch_flame_positions(ground_y: f32, cube_size: f32) -> Vec<Vec3> {
+    torch_foot_positions(ground_y, cube_size)
+        .into_iter()
+        .map(|foot| torch_flame_position(foot, cube_size))
+        .collect()
 }
 
 /// El Templo del Gran Jaguar (ver tikal.jpg): un cuerpo tipo volcán —muchos

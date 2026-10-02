@@ -1,4 +1,7 @@
-use super::{add_snow_cover, build_flag_marker, build_flat_grid, build_volcano, VIEW_GRID_MIN, VIEW_GRID_SIZE};
+use super::{
+    add_snow_cover, build_flag_marker, build_flat_grid, build_torch, build_volcano,
+    torch_flame_position, VIEW_GRID_MIN, VIEW_GRID_SIZE,
+};
 use crate::color::Color;
 use crate::cube::Cube;
 use crate::materials::Materials;
@@ -38,7 +41,33 @@ pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materi
     build_santa_catalina_arch(objects, materials, ground_y, cube_size);
     build_antigua_volcano(objects, materials, ground_y, cube_size);
     build_antigua_trees(objects, materials, ground_y, cube_size);
+    for foot in torch_foot_positions(ground_y, cube_size) {
+        build_torch(objects, materials, foot, cube_size);
+    }
     build_flag_marker(objects, ground_y, cube_size);
+}
+
+/// Pie de las antorchas que flanquean la entrada sur del Arco de Santa
+/// Catalina, junto a los pilares, para que se vea la torre de noche.
+fn torch_foot_positions(ground_y: f32, cube_size: f32) -> [Vec3; 2] {
+    const ARCH_ROW_END: i32 = 11;
+    const LEFT_COL: i32 = 7;
+    const RIGHT_COL: i32 = 12;
+
+    let coord = |c: i32| (c + VIEW_GRID_MIN) as f32 * cube_size;
+    let foot_y = ground_y + 0.5 * cube_size;
+    let z = coord(ARCH_ROW_END + 1);
+    [
+        Vec3::new(coord(LEFT_COL), foot_y, z),
+        Vec3::new(coord(RIGHT_COL), foot_y, z),
+    ]
+}
+
+pub(super) fn torch_flame_positions(ground_y: f32, cube_size: f32) -> Vec<Vec3> {
+    torch_foot_positions(ground_y, cube_size)
+        .into_iter()
+        .map(|foot| torch_flame_position(foot, cube_size))
+        .collect()
 }
 
 /// El Arco de Santa Catalina: 2 columnas de ladrillo que se unen con una cupula arriba

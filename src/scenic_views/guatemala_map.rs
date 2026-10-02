@@ -1,4 +1,4 @@
-use super::{build_flat_grid, ScenicView, VIEW_GRID_MIN, VIEW_GRID_SIZE};
+use super::{build_flat_grid, build_torch, torch_flame_position, ScenicView, VIEW_GRID_MIN, VIEW_GRID_SIZE};
 use crate::cube::Cube;
 use crate::materials::Materials;
 use crate::ray_intersect::{Material, RayIntersect};
@@ -34,6 +34,28 @@ const GUATEMALA_MAP: [&str; VIEW_GRID_SIZE] = [
 pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, ground_y: f32, cube_size: f32) {
     build_flat_grid(objects, materials, &GUATEMALA_MAP, ground_y, cube_size);
     build_guatemala_markers(objects, materials, ground_y, cube_size);
+    for foot in torch_foot_positions(ground_y, cube_size) {
+        build_torch(objects, materials, foot, cube_size);
+    }
+}
+
+/// Pie de las antorchas que flanquean la mini torre de hierro (el portal de
+/// regreso al santuario), para que se note de noche sobre el relieve del mapa.
+fn torch_foot_positions(ground_y: f32, cube_size: f32) -> [Vec3; 2] {
+    let coord = |c: i32| (c + VIEW_GRID_MIN) as f32 * cube_size;
+    let foot_y = ground_y + 0.5 * cube_size;
+    let z = coord(SANCTUARY_PORTAL_ROW);
+    [
+        Vec3::new(coord(SANCTUARY_PORTAL_COL - 1), foot_y, z),
+        Vec3::new(coord(SANCTUARY_PORTAL_COL + 1), foot_y, z),
+    ]
+}
+
+pub(super) fn torch_flame_positions(ground_y: f32, cube_size: f32) -> Vec<Vec3> {
+    torch_foot_positions(ground_y, cube_size)
+        .into_iter()
+        .map(|foot| torch_flame_position(foot, cube_size))
+        .collect()
 }
 
 /// Las 3 réplicas miniatura sobre el relieve del mapa, más la mini torre de

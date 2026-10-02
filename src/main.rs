@@ -297,7 +297,7 @@ pub fn render(
 const CUBE_SIZE: f32 = 1.0;
 const GROUND_Y: f32 = -1.0;
 
-const FIREFLY_COUNT: usize = 8;
+const FIREFLY_COUNT: usize = 18;
 
 fn build_scene(season: Season, night: bool) -> (Materials, Vec<Box<dyn RayIntersect>>, Vec<Light>) {
     let materials = Materials::load(season);
@@ -450,6 +450,11 @@ fn build_view_scene(
         let positions = fireflies::positions(grid_min, grid_max, GROUND_Y, FIREFLY_COUNT);
         let mut fireflies_lights = Vec::new();
         fireflies::build(&mut objects, &mut fireflies_lights, &positions);
+
+        for flame_pos in scenic_views::torch_flame_positions(scenic, GROUND_Y, CUBE_SIZE) {
+            fireflies_lights.push(Light::point(flame_pos, Color::new(255, 120, 40), 1.4, 7.0));
+        }
+
         fireflies_lights
     } else {
         vec![sun_light()]
