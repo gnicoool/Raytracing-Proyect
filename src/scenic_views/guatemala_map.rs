@@ -36,12 +36,17 @@ pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materi
     build_guatemala_markers(objects, materials, ground_y, cube_size);
 }
 
-/// Las 3 réplicas miniatura sobre el relieve del mapa
+/// Las 3 réplicas miniatura sobre el relieve del mapa, más la mini torre de
+/// hierro que regresa al diorama principal del santuario.
 fn build_guatemala_markers(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materials, ground_y: f32, cube_size: f32) {
     build_map_tikal(objects, materials, ground_y, cube_size, 11, 2);
     build_map_atitlan(objects, materials, ground_y, cube_size, 5, 13);
     build_map_antigua(objects, materials, ground_y, cube_size, 8, 14);
+    build_map_sanctuary_portal(objects, materials, ground_y, cube_size, SANCTUARY_PORTAL_COL, SANCTUARY_PORTAL_ROW);
 }
+
+const SANCTUARY_PORTAL_COL: i32 = 13;
+const SANCTUARY_PORTAL_ROW: i32 = 11;
 
 /// Caja de colisión invisible para cada mini marcador del Mapa de
 /// Guatemala debe coincidir con las columnas/filas usadas en
@@ -67,6 +72,26 @@ pub(crate) fn guatemala_marker_hitboxes(ground_y: f32, cube_size: f32) -> [(Scen
         (ScenicView::LagoAtitlan, hitbox(coord(5), coord(13))),
         (ScenicView::AntiguaGuatemala, hitbox(coord(8), coord(14))),
     ]
+}
+
+/// Caja de colisión invisible de la mini torre de hierro (ver
+/// `build_map_sanctuary_portal`). A diferencia de `guatemala_marker_hitboxes`,
+/// esta no lleva a otro `ScenicView`: `main.rs` la usa para volver al diorama
+/// principal del santuario (`current_view = None`), igual que la tecla `0`.
+pub(crate) fn sanctuary_portal_hitbox(ground_y: f32, cube_size: f32) -> Cube {
+    const HITBOX_SIZE: f32 = 3.0;
+    const HITBOX_HEIGHT: f32 = 3.0;
+    let invisible = Material::new(Color::new(0, 0, 0), 0.0, [0.0, 0.0, 0.0]);
+
+    let x = (SANCTUARY_PORTAL_COL + VIEW_GRID_MIN) as f32 * cube_size;
+    let z = (SANCTUARY_PORTAL_ROW + VIEW_GRID_MIN) as f32 * cube_size;
+
+    Cube::new_box(
+        Vec3::new(x, ground_y + HITBOX_HEIGHT * cube_size / 2.0, z),
+        Vec3::new(HITBOX_SIZE * cube_size, HITBOX_HEIGHT * cube_size, HITBOX_SIZE * cube_size),
+        cube_size,
+        invisible,
+    )
 }
 
 /// Mini pirámide de piedra, marcando Tikal en el mapa.
@@ -221,5 +246,44 @@ fn build_map_antigua(
         Vec3::new(dome_size, dome_size, dome_size),
         cube_size * BLOCK_TILE,
         materials.brick.clone(),
+    )));
+}
+
+/// Mini torre de hierro que marca el regreso al diorama principal del
+/// santuario: 2 bloques de hierro opaco apilados con un bloque de hierro
+/// espejo encima. El hitbox correspondiente es `sanctuary_portal_hitbox`.
+fn build_map_sanctuary_portal(
+    objects: &mut Vec<Box<dyn RayIntersect>>,
+    materials: &Materials,
+    ground_y: f32,
+    cube_size: f32,
+    col: i32,
+    row: i32,
+) {
+    const HALF: f32 = 0.35;
+    const BLOCK_HEIGHT: f32 = 0.5;
+    const BLOCK_TILE: f32 = 0.3;
+
+    let center_x = (col + VIEW_GRID_MIN) as f32 * cube_size;
+    let center_z = (row + VIEW_GRID_MIN) as f32 * cube_size;
+    let height = BLOCK_HEIGHT * cube_size;
+    let size = Vec3::new(HALF * 2.0 * cube_size, height, HALF * 2.0 * cube_size);
+
+    let mut center_y = ground_y + 0.5 * cube_size + height / 2.0;
+    for _ in 0..2 {
+        objects.push(Box::new(Cube::new_box(
+            Vec3::new(center_x, center_y, center_z),
+            size,
+            cube_size * BLOCK_TILE,
+            materials.iron.clone(),
+        )));
+        center_y += height;
+    }
+
+    objects.push(Box::new(Cube::new_box(
+        Vec3::new(center_x, center_y, center_z),
+        size,
+        cube_size * BLOCK_TILE,
+        materials.iron_mirror.clone(),
     )));
 }

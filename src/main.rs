@@ -527,9 +527,8 @@ fn main() {
 
     let mut season = Season::Summer;
     let mut night = false;
-    let mut current_view: Option<ScenicView> = None;
-    let (_materials, mut objects, firefly_lights) = build_scene(season, night);
-    let mut lights: Vec<Light> = if night { firefly_lights } else { vec![sun_light()] };
+    let mut current_view: Option<ScenicView> = Some(ScenicView::GuatemalaMap);
+    let (_materials, mut objects, mut lights) = build_view_scene(current_view, season, night);
     window.set_title(&window_title(current_view, season, night));
 
     let mut snowflakes = snow::new_flakes(200, WIDTH, HEIGHT);
@@ -683,6 +682,20 @@ fn main() {
                     needs_sharp_render = true;
                     break;
                 }
+            }
+
+            // Chocar con la mini torre de hierro (col 13, fila 11) regresa
+            // al diorama principal del santuario, igual que la tecla 0.
+            let portal = scenic_views::sanctuary_portal_hitbox(GROUND_Y, CUBE_SIZE);
+            if portal.contains_point(&camera.eye) {
+                current_view = None;
+                let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
+                objects = new_objects;
+                drop(new_materials);
+                lights = new_lights;
+                camera = camera_for_view(current_view);
+                window.set_title(&window_title(current_view, season, night));
+                needs_sharp_render = true;
             }
         }
 

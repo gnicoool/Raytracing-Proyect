@@ -9,7 +9,7 @@ use crate::materials::{pick_ground_snow, pick_sparse, Materials};
 use crate::ray_intersect::{Material, RayIntersect};
 use nalgebra_glm::Vec3;
 
-pub(crate) use guatemala_map::guatemala_marker_hitboxes;
+pub(crate) use guatemala_map::{guatemala_marker_hitboxes, sanctuary_portal_hitbox};
 
 // Vistas aéreas adicionales (ver vistas.md), activadas con las teclas I/O/P/M.
 // Reutilizan la misma leyenda de materiales que el diorama principal:
