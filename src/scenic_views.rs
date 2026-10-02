@@ -3,9 +3,10 @@ mod atitlan;
 mod guatemala_map;
 mod tikal;
 
+use crate::color::Color;
 use crate::cube::Cube;
 use crate::materials::{pick_ground_snow, pick_sparse, Materials};
-use crate::ray_intersect::RayIntersect;
+use crate::ray_intersect::{Material, RayIntersect};
 use nalgebra_glm::Vec3;
 
 pub(crate) use guatemala_map::guatemala_marker_hitboxes;
@@ -289,4 +290,58 @@ fn build_volcano(
         cube_size * BLOCK_TILE,
         materials.ice.clone(),
     )));
+}
+
+/// Bandera de Guatemala (celeste-blanco-celeste) en la esquina de cada vista
+/// destino (columna 19, filas 17-19): un marcador para volver al Mapa de
+/// Guatemala. Solo lo usan `atitlan`, `antigua` y `tikal` — el mapa mismo no
+/// lo necesita. `flag_hitbox` comparte el mismo footprint para que
+/// `main.rs` detecte la colisión con `Cube::contains_point`.
+fn build_flag_marker(objects: &mut Vec<Box<dyn RayIntersect>>, ground_y: f32, cube_size: f32) {
+    const FLAG_COL: i32 = 19;
+    const FLAG_ROWS: [i32; 3] = [17, 18, 19];
+    const FLAG_HEIGHT: f32 = 1.8;
+
+    let celeste = Material::new(Color::new(75, 163, 217), 20.0, [0.9, 0.05, 0.0]);
+    let white = Material::new(Color::new(245, 245, 245), 20.0, [0.9, 0.05, 0.0]);
+
+    let x = (FLAG_COL + VIEW_GRID_MIN) as f32 * cube_size;
+    let height = FLAG_HEIGHT * cube_size;
+    let center_y = ground_y + 0.5 * cube_size + height / 2.0;
+
+    for (i, &row) in FLAG_ROWS.iter().enumerate() {
+        let z = (row + VIEW_GRID_MIN) as f32 * cube_size;
+        let material = if i == 1 { white.clone() } else { celeste.clone() };
+        objects.push(Box::new(Cube::new_box(
+            Vec3::new(x, center_y, z),
+            Vec3::new(cube_size * 0.9, height, cube_size * 0.9),
+            cube_size,
+            material,
+        )));
+    }
+}
+
+/// Caja de colisión invisible que envuelve la bandera entera (ver
+/// `build_flag_marker`). No se agrega a `objects`, así que nunca se
+/// renderiza; `main.rs` la usa para saber cuándo volver al Mapa de
+/// Guatemala.
+pub(crate) fn flag_hitbox(ground_y: f32, cube_size: f32) -> Cube {
+    const FLAG_COL: i32 = 19;
+    const FLAG_ROW_START: i32 = 17;
+    const FLAG_ROW_END: i32 = 19;
+    const HITBOX_WIDTH: f32 = 2.2;
+    const HITBOX_HEIGHT: f32 = 3.0;
+
+    let invisible = Material::new(Color::new(0, 0, 0), 0.0, [0.0, 0.0, 0.0]);
+
+    let x = (FLAG_COL + VIEW_GRID_MIN) as f32 * cube_size;
+    let depth = (FLAG_ROW_END - FLAG_ROW_START + 1) as f32;
+    let z_center = (FLAG_ROW_START + VIEW_GRID_MIN) as f32 * cube_size + (depth - 1.0) * cube_size / 2.0;
+
+    Cube::new_box(
+        Vec3::new(x, ground_y + HITBOX_HEIGHT * cube_size / 2.0, z_center),
+        Vec3::new(HITBOX_WIDTH * cube_size, HITBOX_HEIGHT * cube_size, depth * cube_size),
+        cube_size,
+        invisible,
+    )
 }

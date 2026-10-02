@@ -1,4 +1,4 @@
-use super::{add_snow_cover, build_flat_grid, VIEW_GRID_MIN, VIEW_GRID_SIZE};
+use super::{add_snow_cover, build_flag_marker, build_flat_grid, VIEW_GRID_MIN, VIEW_GRID_SIZE};
 use crate::color::Color;
 use crate::cube::Cube;
 use crate::materials::Materials;
@@ -37,6 +37,7 @@ pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materi
     build_flat_grid(objects, materials, &TIKAL_PETEN, ground_y, cube_size);
     build_tikal_pyramid(objects, materials, ground_y, cube_size);
     build_tikal_trees(objects, materials, ground_y, cube_size);
+    build_flag_marker(objects, ground_y, cube_size);
 }
 
 /// El Templo del Gran Jaguar (ver tikal.jpg): un cuerpo tipo volcán —muchos

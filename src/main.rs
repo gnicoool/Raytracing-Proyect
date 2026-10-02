@@ -686,6 +686,21 @@ fn main() {
             }
         }
 
+        //Chocar con la bandera de Guatemala en la esquina regresa al mapa.
+        if matches!(current_view, Some(v) if v != ScenicView::GuatemalaMap) {
+            let flag = scenic_views::flag_hitbox(GROUND_Y, CUBE_SIZE);
+            if flag.contains_point(&camera.eye) {
+                current_view = Some(ScenicView::GuatemalaMap);
+                let (new_materials, new_objects, new_lights) = build_view_scene(current_view, season, night);
+                objects = new_objects;
+                drop(new_materials);
+                lights = new_lights;
+                camera = camera_for_view(current_view);
+                window.set_title(&window_title(current_view, season, night));
+                needs_sharp_render = true;
+            }
+        }
+
         if night && last_flicker.elapsed() >= FLICKER_INTERVAL {
             fireflies::flicker(&mut lights);
             last_flicker = Instant::now();

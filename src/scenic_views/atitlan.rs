@@ -1,4 +1,4 @@
-use super::{add_snow_cover, build_flat_grid, build_volcano, VIEW_GRID_MIN, VIEW_GRID_SIZE};
+use super::{add_snow_cover, build_flag_marker, build_flat_grid, build_volcano, VIEW_GRID_MIN, VIEW_GRID_SIZE};
 use crate::cube::Cube;
 use crate::materials::Materials;
 use crate::ray_intersect::RayIntersect;
@@ -35,6 +35,7 @@ pub(super) fn build(objects: &mut Vec<Box<dyn RayIntersect>>, materials: &Materi
     build_atitlan_docks(objects, materials, ground_y, cube_size);
     build_atitlan_raft(objects, materials, ground_y, cube_size);
     build_atitlan_trees(objects, materials, ground_y, cube_size);
+    build_flag_marker(objects, ground_y, cube_size);
 }
 
 /// Los dos volcanes al fondo
